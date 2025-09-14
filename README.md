@@ -150,8 +150,8 @@ pom.xml                      # Maven 配置（含 shade、exec、launch4j profil
   - Windows EXE：`target/DNS延迟测试工具.exe`
 - EXE 基于 Launch4j 生成，JRE 最低版本要求在 `pom.xml` profile 中配置。
 
-## 截图与示例
-可在此处加入应用界面截图与示例 GIF，方便快速了解使用流程（建议存放于 `docs/` 或在 README 同目录引用）。
+## 工具截图
+![img.png](image/img.png)
 
 ## 贡献
 欢迎提交 Issue 与 Pull Request：
