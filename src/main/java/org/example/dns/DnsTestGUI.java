@@ -48,7 +48,7 @@ public class DnsTestGUI extends JFrame {
     }
 
     private void initializeComponents() {
-        setTitle("DNS延迟测试工具 v2.0");
+        setTitle("DNS延迟测试工具 v1.0");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1100, 750);
         setLocationRelativeTo(null);
