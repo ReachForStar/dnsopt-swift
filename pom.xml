@@ -13,10 +13,12 @@
     <description>DNS服务器延迟测试工具 - 现代化Swing版</description>
 
     <properties>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <main.class>org.example.dns.DnsTestApplication</main.class>
+        <!-- 新增属性：控制是否包含dig工具 -->
+        <include.dig.tools>true</include.dig.tools>
     </properties>
 
     <dependencies>
@@ -62,6 +64,10 @@
                 <includes>
                     <include>**/*</include>
                 </includes>
+                <!-- 根据profile排除大文件 -->
+                <excludes>
+                    <exclude>dig_path/**</exclude>
+                </excludes>
             </resource>
         </resources>
 
@@ -70,11 +76,12 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>3.11.0</version>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <source>17</source>
+                    <target>17</target>
                     <encoding>UTF-8</encoding>
+                    <release>17</release>
                 </configuration>
             </plugin>
 
@@ -92,7 +99,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.2.4</version>
+                <version>3.4.1</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -100,6 +107,7 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>${main.class}</mainClass>
@@ -112,6 +120,8 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/LICENSE*</exclude>
+                                        <exclude>META-INF/NOTICE*</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
@@ -119,21 +129,51 @@
                     </execution>
                 </executions>
             </plugin>
+
         </plugins>
     </build>
 
-    <!-- Launch4j profile - EXE生成 -->
+    <!-- Profiles for different packaging options -->
     <profiles>
+        <!-- 快速开发模式 - 排除大文件 -->
         <profile>
-            <id>windows-exe</id>
+            <id>dev</id>
             <activation>
-                <os>
-                    <family>windows</family>
-                </os>
+                <activeByDefault>true</activeByDefault>
             </activation>
             <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <excludes>
+                            <exclude>dig_path/**</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+
+        <!-- 完整资源模式 - 包含所有文件 -->
+        <profile>
+            <id>full</id>
+            <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <includes>
+                            <include>**/*</include>
+                        </includes>
+                    </resource>
+                </resources>
+            </build>
+        </profile>
+
+        <!-- Profile for creating a standard EXE with Launch4j (requires JRE) -->
+        <profile>
+            <id>windows-exe</id>
+            <build>
                 <plugins>
-                    <!-- Launch4j Maven插件 -->
+                    <!-- Launch4j Maven Plugin -->
                     <plugin>
                         <groupId>com.akathist.maven.plugins.launch4j</groupId>
                         <artifactId>launch4j-maven-plugin</artifactId>
@@ -148,20 +188,189 @@
                                 <configuration>
                                     <headerType>gui</headerType>
                                     <jar>${project.build.directory}/${project.build.finalName}.jar</jar>
-                                    <outfile>${project.build.directory}/DNS延迟测试工具.exe</outfile>
+                                    <outfile>${project.build.directory}/DNS延迟测试工具_launch4j.exe</outfile>
                                     <icon>src/main/resources/icon.ico</icon>
                                     <downloadUrl>https://adoptium.net/</downloadUrl>
                                     <classPath>
                                         <mainClass>${main.class}</mainClass>
                                     </classPath>
                                     <jre>
-                                        <minVersion>1.8.0</minVersion>
+                                        <minVersion>17.0.0</minVersion>
                                         <initialHeapSize>128</initialHeapSize>
                                         <maxHeapSize>1024</maxHeapSize>
+                                    </jre>
+                                    <versionInfo>
+                                        <fileVersion>2.0.0.0</fileVersion>
+                                        <txtFileVersion>${project.version}</txtFileVersion>
+                                        <fileDescription>DNS延迟测试工具</fileDescription>
+                                        <copyright>2024</copyright>
+                                        <productVersion>2.0.0.0</productVersion>
+                                        <txtProductVersion>${project.version}</txtProductVersion>
+                                        <productName>DNS延迟测试工具</productName>
+                                        <companyName>DNS Test Tool</companyName>
+                                        <internalName>dns-test-tool</internalName>
+                                        <originalFilename>DNS延迟测试工具.exe</originalFilename>
+                                    </versionInfo>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Profile for creating a standalone application with an embedded JRE using jpackage -->
+        <profile>
+            <id>standalone</id>
+            <build>
+                <plugins>
+                    <!-- 使用 antrun 直接调用系统 jpackage，避免第三方插件仓库不可用问题 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>run-jpackage</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <echo>Running jpackage to build standalone app-image with embedded JRE...</echo>
+                                        <!-- 先清理可能存在的dist目录 -->
+                                        <delete dir="${project.build.directory}/dist" failonerror="false"/>
+                                        <mkdir dir="${project.build.directory}/dist"/>
+                                        <!-- 创建临时输入目录 -->
+                                        <mkdir dir="${project.build.directory}/jpackage-input"/>
+                                        <!-- 复制JAR到临时目录 -->
+                                        <copy file="${project.build.directory}/${project.build.finalName}.jar"
+                                              todir="${project.build.directory}/jpackage-input"/>
+                                        <!-- 运行jpackage -->
+                                        <exec executable="jpackage" dir="${project.build.directory}" failonerror="true">
+                                            <arg value="--name"/>
+                                            <arg value="DNS延迟测试工具"/>
+                                            <arg value="--input"/>
+                                            <arg value="jpackage-input"/>
+                                            <arg value="--main-jar"/>
+                                            <arg value="${project.build.finalName}.jar"/>
+                                            <arg value="--main-class"/>
+                                            <arg value="${main.class}"/>
+                                            <arg value="--type"/>
+                                            <arg value="app-image"/>
+                                            <arg value="--app-version"/>
+                                            <arg value="${project.version}"/>
+                                            <arg value="--dest"/>
+                                            <arg value="dist"/>
+                                            <arg value="--icon"/>
+                                            <arg value="../src/main/resources/icon.ico"/>
+                                            <arg value="--vendor"/>
+                                            <arg value="DNS Test Tool"/>
+                                            <arg value="--java-options"/>
+                                            <arg value="-Dfile.encoding=UTF-8"/>
+                                            <arg value="--verbose"/>
+                                        </exec>
+                                        <!-- 压缩生成的 app-image 便于分发 -->
+                                        <zip destfile="${project.build.directory}/dist/DNS延迟测试工具-standalone.zip"
+                                             basedir="${project.build.directory}/dist/DNS延迟测试工具"/>
+                                        <!-- 清理临时目录 -->
+                                        <delete dir="${project.build.directory}/jpackage-input"/>
+                                        <echo>Standalone application created at: ${project.build.directory}/dist/DNS延迟测试工具</echo>
+                                        <echo>Archive created at: ${project.build.directory}/dist/DNS延迟测试工具-standalone.zip</echo>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- 轻量级EXE - 仅包含核心功能，无dig工具 -->
+        <profile>
+            <id>lightweight-exe</id>
+            <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <excludes>
+                            <exclude>dig_path/**</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
+                <plugins>
+                    <plugin>
+                        <groupId>com.akathist.maven.plugins.launch4j</groupId>
+                        <artifactId>launch4j-maven-plugin</artifactId>
+                        <version>2.1.2</version>
+                        <executions>
+                            <execution>
+                                <id>l4j-exe-lightweight</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>launch4j</goal>
+                                </goals>
+                                <configuration>
+                                    <headerType>gui</headerType>
+                                    <jar>${project.build.directory}/${project.build.finalName}.jar</jar>
+                                    <outfile>${project.build.directory}/DNS延迟测试工具_轻量版.exe</outfile>
+                                    <icon>src/main/resources/icon.ico</icon>
+                                    <downloadUrl>https://adoptium.net/</downloadUrl>
+                                    <classPath>
+                                        <mainClass>${main.class}</mainClass>
+                                    </classPath>
+                                    <jre>
+                                        <minVersion>17.0.0</minVersion>
+                                        <initialHeapSize>64</initialHeapSize>
+                                        <maxHeapSize>512</maxHeapSize>
                                     </jre>
                                 </configuration>
                             </execution>
                         </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- GraalVM Native Image profile - for creating a native executable -->
+        <profile>
+            <id>native</id>
+            <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <excludes>
+                            <exclude>dig_path/**</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <version>0.9.28</version>
+                        <extensions>true</extensions>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                                <phase>package</phase>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <imageName>DNS延迟测试工具</imageName>
+                            <mainClass>org.example.dns.DnsTestApplication</mainClass>
+                            <buildArgs>
+                                <buildArg>--no-fallback</buildArg>
+                                <buildArg>--enable-preview</buildArg>
+                                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                                <buildArg>--initialize-at-build-time</buildArg>
+                            </buildArgs>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>

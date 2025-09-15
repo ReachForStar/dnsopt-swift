@@ -19,11 +19,12 @@
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.8.1</version>
+        <version>3.11.0</version>
         <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
+          <source>17</source>
+          <target>17</target>
           <encoding>UTF-8</encoding>
+          <release>17</release>
         </configuration>
       </plugin>
       <plugin>
@@ -84,20 +85,102 @@
                 <configuration>
                   <headerType>gui</headerType>
                   <jar>${project.build.directory}/${project.build.finalName}.jar</jar>
-                  <outfile>${project.build.directory}/DNS延迟测试工具.exe</outfile>
+                  <outfile>${project.build.directory}/DNS延迟测试工具_launch4j.exe</outfile>
                   <icon>src/main/resources/icon.ico</icon>
                   <downloadUrl>https://adoptium.net/</downloadUrl>
                   <classPath>
                     <mainClass>${main.class}</mainClass>
                   </classPath>
                   <jre>
-                    <minVersion>1.8.0</minVersion>
+                    <minVersion>17.0.0</minVersion>
                     <initialHeapSize>128</initialHeapSize>
                     <maxHeapSize>1024</maxHeapSize>
                   </jre>
                 </configuration>
               </execution>
             </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>standalone</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>run-jpackage</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <echo>Running jpackage to build standalone app-image with embedded JRE...</echo>
+                    <mkdir />
+                    <exec>
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                      <arg />
+                    </exec>
+                    <zip />
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>0.9.28</version>
+            <extensions>true</extensions>
+            <executions>
+              <execution>
+                <id>build-native</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>compile-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <imageName>DNS延迟测试工具</imageName>
+              <mainClass>org.example.dns.DnsTestApplication</mainClass>
+              <buildArgs>
+                <buildArg>--no-fallback</buildArg>
+                <buildArg>--enable-preview</buildArg>
+                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+              </buildArgs>
+            </configuration>
           </plugin>
         </plugins>
       </build>
@@ -120,9 +203,9 @@
     </dependency>
   </dependencies>
   <properties>
+    <maven.compiler.target>17</maven.compiler.target>
     <main.class>org.example.dns.DnsTestApplication</main.class>
+    <maven.compiler.source>17</maven.compiler.source>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.source>1.8</maven.compiler.source>
-    <maven.compiler.target>1.8</maven.compiler.target>
   </properties>
 </project>
