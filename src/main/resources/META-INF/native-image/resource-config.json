@@ -1,0 +1,29 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "\\Qicon.ico\\E"
+      },
+      {
+        "pattern": "\\Qapp.manifest\\E"
+      },
+      {
+        "pattern": "\\Qfont/\\E.*"
+      },
+      {
+        "pattern": "\\QMETA-INF/\\E.*"
+      },
+      {
+        "pattern": "\\Qcom/formdev/flatlaf/\\E.*"
+      },
+      {
+        "pattern": "\\Qcom/formdev/flatlaf/themes/\\E.*"
+      },
+      {
+        "pattern": "\\Qcom/formdev/flatlaf/icons/\\E.*"
+      }
+    ]
+  },
+  "bundles": []
+}
+

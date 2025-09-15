@@ -20,40 +20,45 @@ set /p choice=请选择构建选项 (1-7):
 if "%choice%"=="1" (
     echo 执行快速开发构建...
     mvn clean package -Pdev
-    if %ERRORLEVEL% EQU 0 (
+    if exist "target\dns-test-tool.jar" (
         echo.
         echo ✅ 构建成功！
         echo 生成文件: target\dns-test-tool.jar
         echo 运行命令: java -jar target\dns-test-tool.jar
     ) else (
         echo ❌ 构建失败！
+        echo 未找到生成的JAR文件
     )
 ) else if "%choice%"=="2" (
     echo 执行轻量级EXE构建...
     mvn clean package -Plightweight-exe
-    if %ERRORLEVEL% EQU 0 (
+    if exist "target\DNS延迟测试工具_轻量版.exe" (
         echo.
         echo ✅ 构建成功！
         echo 生成文件: target\DNS延迟测试工具_轻量版.exe
         echo 注意: 需要安装Java 17或更高版本
     ) else (
         echo ❌ 构建失败！
+        echo 未找到生成的EXE文件
+        echo 检查Maven输出获取详细错误信息
     )
 ) else if "%choice%"=="3" (
     echo 执行完整功能EXE构建...
     mvn clean package -Pfull,windows-exe
-    if %ERRORLEVEL% EQU 0 (
+    if exist "target\DNS延迟测试工具_launch4j.exe" (
         echo.
         echo ✅ 构建成功！
         echo 生成文件: target\DNS延迟测试工具_launch4j.exe
         echo 注意: 需要安装Java 17或更高版本，包含dig工具
     ) else (
         echo ❌ 构建失败！
+        echo 未找到生成的EXE文件
+        echo 检查Maven输出获取详细错误信息
     )
 ) else if "%choice%"=="4" (
     echo 执行独立应用构建（已修复路径循环问题）...
     mvn clean package -Pfull,standalone
-    if %ERRORLEVEL% EQU 0 (
+    if exist "target\dist\DNS延迟测试工具\DNS延迟测试工具.exe" (
         echo.
         echo ✅ 构建成功！
         echo 应用程序位置: target\dist\DNS延迟测试工具\
@@ -64,18 +69,36 @@ if "%choice%"=="1" (
         start "" "target\dist\DNS延迟测试工具"
     ) else (
         echo ❌ 构建失败！
+        echo 未找到生成的独立应用
+        echo 检查Maven输出获取详细错误信息
     )
 ) else if "%choice%"=="5" (
     echo 执行原生可执行文件构建...
-    echo 注意: 需要安装GraalVM
+    echo 注意: 需要安装GraalVM，且此过程可能需要较长时间
+    echo 正在检查GraalVM环境...
+    native-image --version >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo ❌ 未检测到GraalVM或native-image工具
+        echo 请确保：
+        echo 1. 已安装GraalVM
+        echo 2. 已安装native-image组件: gu install native-image
+        echo 3. GraalVM的bin目录已添加到PATH环境变量
+        goto end
+    )
+    echo ✅ GraalVM环境检查通过
+    echo 开始构建原生可执行文件...
     mvn clean package -Pnative
-    if %ERRORLEVEL% EQU 0 (
+    if exist "target\dns-test-tool.exe" (
         echo.
         echo ✅ 构建成功！
-        echo 生成文件: target\DNS延迟测试工具.exe
-        echo 注意: 原生可执行文件，启动速度最快
+        echo 生成文件: target\dns-test-tool.exe
+        echo 注意: 原生可执行文件，启动速度最快，无需安装Java
+        echo 文件大小可能较大，但运行性能最佳
     ) else (
         echo ❌ 构建失败！
+        echo 未找到生成的原生可执行文件
+        echo 提示: Swing应用的原生镜像构建比较复杂，如果失败请尝试其他构建选项
+        echo 检查Maven输出获取详细错误信息
     )
 ) else if "%choice%"=="6" (
     echo 清理构建缓存...
@@ -84,7 +107,10 @@ if "%choice%"=="1" (
     echo ✅ 缓存已清理
 ) else if "%choice%"=="7" (
     echo 测试应用程序...
-    if exist "target\dns-test-tool.jar" (
+    if exist "target\dns-test-tool.exe" (
+        echo 运行GraalVM原生可执行文件...
+        start "" "target\dns-test-tool.exe"
+    ) else if exist "target\dns-test-tool.jar" (
         echo 运行JAR版本...
         java -jar target\dns-test-tool.jar
     ) else if exist "target\DNS延迟测试工具_轻量版.exe" (
@@ -103,6 +129,7 @@ if "%choice%"=="1" (
     echo ❌ 无效选项，请重新运行脚本
 )
 
+:end
 echo.
 echo 构建完成！按任意键退出...
 pause >nul

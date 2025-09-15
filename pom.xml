@@ -361,14 +361,53 @@
                             </execution>
                         </executions>
                         <configuration>
-                            <imageName>DNS延迟测试工具</imageName>
+                            <imageName>dns-test-tool</imageName>
                             <mainClass>org.example.dns.DnsTestApplication</mainClass>
                             <buildArgs>
                                 <buildArg>--no-fallback</buildArg>
+                                <!-- 延迟初始化AWT/Swing相关类 -->
+                                <buildArg>--initialize-at-run-time=sun.awt.windows.WMouseInfoPeer</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.awt.AWTAutoShutdown</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.awt.shell.Win32ShellFolderManager2</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.awt.shell.Win32ShellFolder2</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.awt.shell.ShellFolder</buildArg>
+                                <buildArg>--initialize-at-run-time=javax.swing.JFileChooser</buildArg>
+                                <buildArg>--initialize-at-run-time=javax.swing.filechooser.FileSystemView</buildArg>
+                                <buildArg>--initialize-at-run-time=java.awt.Toolkit</buildArg>
+                                <buildArg>--initialize-at-run-time=java.awt.GraphicsEnvironment</buildArg>
+                                <!-- Swing相关包延迟初始化 -->
+                                <buildArg>--initialize-at-run-time=javax.swing</buildArg>
+                                <buildArg>--initialize-at-run-time=java.awt</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.awt</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.java2d</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.font</buildArg>
+                                <!-- Windows特定的AWT类 -->
+                                <buildArg>--initialize-at-run-time=sun.awt.windows</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.java2d.d3d</buildArg>
+                                <buildArg>--initialize-at-run-time=sun.java2d.opengl</buildArg>
+                                <!-- 排除问题类 -->
+                                <buildArg>--initialize-at-run-time=com.sun.imageio.plugins.jpeg.JPEGImageReader</buildArg>
+                                <buildArg>--initialize-at-run-time=com.sun.imageio.plugins.jpeg.JPEGImageWriter</buildArg>
+                                <!-- FlatLaf相关 -->
+                                <buildArg>--initialize-at-run-time=com.formdev.flatlaf</buildArg>
+                                <!-- 启用所有反射配置 -->
+                                <buildArg>--enable-all-security-services</buildArg>
+                                <buildArg>--enable-http</buildArg>
+                                <buildArg>--enable-https</buildArg>
+                                <!-- AWT支持 -->
                                 <buildArg>--enable-preview</buildArg>
+                                <buildArg>-H:+AddAllCharsets</buildArg>
+                                <buildArg>-H:+IncludeAllLocales</buildArg>
+                                <!-- 报告异常堆栈 -->
                                 <buildArg>-H:+ReportExceptionStackTraces</buildArg>
-                                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
-                                <buildArg>--initialize-at-build-time</buildArg>
+                                <!-- 打印详细信息 -->
+                                <buildArg>--verbose</buildArg>
+                                <!-- 允许不完整类路径 -->
+                                <buildArg>--allow-incomplete-classpath</buildArg>
+                                <!-- 内存设置 -->
+                                <buildArg>-J-Xmx4g</buildArg>
+                                <!-- 强制非无头模式 -->
+                                <buildArg>-J-Djava.awt.headless=false</buildArg>
                             </buildArgs>
                         </configuration>
                     </plugin>
