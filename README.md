@@ -154,7 +154,7 @@ src/main/java/org/example/dns/
 ## 📄 许可证
 
 本项目基于 Apache License 2.0 开源发布。您可以在遵循许可条款的前提下自由使用、修改与分发本软件；分发时需保留原始版权与许可声明。完整条款见仓库根目录的 LICENSE 文件，或访问：
-- LICENSE 文件：./LICENSE
+- LICENSE 文件：LICENSE
 - 在线版本：http://www.apache.org/licenses/LICENSE-2.0
 ## 🤝 联系方式
 问题与建议：请在本仓库提交 Issue（推荐）。
