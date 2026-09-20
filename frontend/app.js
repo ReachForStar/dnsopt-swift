@@ -204,6 +204,7 @@ function renderResults() {
     if (eligible.length > 1) secondarySelect.value = eligible[1].server;
   }
 
+  const ok = results.filter((r) => r.success);
   const okCount = ok.length;
   $("result-summary").textContent = results.length
     ? "成功 " + okCount + " / " + results.length +
