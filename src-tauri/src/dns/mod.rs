@@ -1,19 +1,22 @@
-//! DNS 延迟测试引擎：UDP 直发（hickory-proto，可校验应答源）与 DoH（hickory-resolver）双通道
+//! DNS 延迟测试引擎：UDP 直发（hickory-proto，可校验应答源）与 DoH（hickory-resolver）双通道，支持多域名
 use hickory_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
 use hickory_proto::rr::{Name, RData, RecordType};
 use hickory_resolver::config::{LookupIpStrategy, NameServerConfig, ResolverConfig, ResolverOpts};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use hickory_resolver::TokioResolver;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
-/// 测试域名（尾部点号表示 FQDN，避免附加搜索域导致多轮查询）
+/// 默认测试域名（尾部点号表示 FQDN，避免附加搜索域导致多轮查询）
 pub const TEST_DOMAIN: &str = "www.baidu.com.";
 
-/// 默认采样轮数与上限（每轮 = 每服务器各查一次）
+/// 默认采样轮数与上限（每轮 = 每服务器每域名各查一次）
 pub const DEFAULT_ROUNDS: usize = 3;
 pub const MAX_ROUNDS: usize = 50;
+/// 域名数量上限
+pub const MAX_DOMAINS: usize = 10;
 
 /// 单次查询超时：需大于常见公网 DNS 的 RTT，慢但可达的服务器不应被误判为失败
 const QUERY_TIMEOUT: Duration = Duration::from_millis(1500);
@@ -31,9 +34,9 @@ pub struct TestResult {
     pub error: Option<String>,
     /// 疑似污染/劫持原因（None = 正常）
     pub suspect: Option<String>,
-    /// 应答 A 记录集合（仅内部用于多数对比，不序列化给前端）
+    /// 各域名应答记录集合（仅内部用于逐域名多数对比，不序列化给前端）
     #[serde(skip)]
-    pub answer_ips: Vec<IpAddr>,
+    pub answers: BTreeMap<String, Vec<String>>,
 }
 
 impl TestResult {
@@ -64,13 +67,42 @@ pub fn is_valid_ipv4(s: &str) -> bool {
         })
 }
 
-/// 用指定服务器执行一次 A 记录查询，返回耗时（毫秒）
+/// 单次查询结果
 struct QueryOutcome {
     latency_ms: u64,
     /// 实际应答源 IP（DoH 通道无法获取，为 None）
     source_ip: Option<IpAddr>,
-    /// 应答中的 A 记录（用于多数对比）
-    answer_ips: Vec<IpAddr>,
+    /// 应答中的 A 记录值（用于多数对比）
+    answers: Vec<String>,
+}
+
+/// 校验并规范化域名列表（1..=MAX_DOMAINS 个，自动补尾部点号成 FQDN）
+pub fn parse_domains(input: &[String]) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for raw in input {
+        let d = raw.trim();
+        if d.is_empty() {
+            continue;
+        }
+        let full = if d.ends_with('.') { d.to_string() } else { format!("{d}.") };
+        let labels: Vec<&str> = full.split('.').filter(|l| !l.is_empty()).collect();
+        if labels.len() < 2 {
+            return Err(format!("域名无效（至少两段）: {d}"));
+        }
+        if full.len() > 253
+            || labels.iter().any(|l| l.len() > 63 || !l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+        {
+            return Err(format!("域名无效: {d}"));
+        }
+        out.push(full);
+    }
+    if out.is_empty() {
+        return Err("至少需要一个测试域名".into());
+    }
+    if out.len() > MAX_DOMAINS {
+        return Err(format!("域名数量超过上限 {MAX_DOMAINS}"));
+    }
+    Ok(out)
 }
 
 /// 校验服务器输入：IPv4 或 DoH URL（https://host[:port][/path]）
@@ -91,8 +123,8 @@ fn parse_server(s: &str) -> Result<String, String> {
 }
 
 /// UDP 直发一次 A 记录查询（可拿到应答源地址，用于劫持检测）
-async fn query_udp(server_ip: &IpAddr) -> Result<QueryOutcome, String> {
-    let name = Name::from_ascii(TEST_DOMAIN).map_err(|e| format!("域名构造失败: {e}"))?;
+async fn query_udp(server_ip: &IpAddr, domain: &str) -> Result<QueryOutcome, String> {
+    let name = Name::from_ascii(domain).map_err(|e| format!("域名构造失败: {e}"))?;
     let id = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_millis() as u16)
@@ -121,26 +153,26 @@ async fn query_udp(server_ip: &IpAddr) -> Result<QueryOutcome, String> {
     if response.metadata.response_code != ResponseCode::NoError {
         return Err(format!("应答码异常: {:?}", response.metadata.response_code));
     }
-    let answer_ips: Vec<IpAddr> = response
+    let answers: Vec<String> = response
         .answers
         .iter()
         .filter_map(|r| match &r.data {
-            RData::A(a) => Some(IpAddr::V4(a.0)),
+            RData::A(a) => Some(a.0.to_string()),
             _ => None,
         })
         .collect();
-    if answer_ips.is_empty() {
+    if answers.is_empty() {
         return Err("响应中没有地址记录".into());
     }
     Ok(QueryOutcome {
         latency_ms,
         source_ip: Some(source.ip()),
-        answer_ips,
+        answers,
     })
 }
 
 /// DoH 通道一次 A 记录查询（HTTPS 加密，无法校验应答源）
-async fn query_doh(url: &str) -> Result<QueryOutcome, String> {
+async fn query_doh(url: &str, domain: &str) -> Result<QueryOutcome, String> {
     let parsed = url::Url::parse(url).map_err(|e| format!("DoH URL 无效: {e}"))?;
     let host = parsed
         .host_str()
@@ -169,33 +201,35 @@ async fn query_doh(url: &str) -> Result<QueryOutcome, String> {
 
     let start = Instant::now();
     let lookup = resolver
-        .lookup_ip(TEST_DOMAIN)
+        .lookup_ip(domain)
         .await
         .map_err(|e| e.to_string())?;
     let latency_ms = start.elapsed().as_millis() as u64;
-    let answer_ips: Vec<IpAddr> = lookup.iter().collect();
-    if answer_ips.is_empty() {
+    let answers: Vec<String> = lookup.iter().map(|ip| ip.to_string()).collect();
+    if answers.is_empty() {
         return Err("响应中没有地址记录".into());
     }
     Ok(QueryOutcome {
         latency_ms,
         source_ip: None,
-        answer_ips,
+        answers,
     })
 }
 
 /// 按服务器类型分派一次查询
-async fn query_once(server: &str) -> Result<QueryOutcome, String> {
+async fn query_once(server: &str, domain: &str) -> Result<QueryOutcome, String> {
     let t = server.trim();
     if let Ok(ip) = t.parse::<IpAddr>() {
-        query_udp(&ip).await
+        query_udp(&ip, domain).await
     } else {
-        query_doh(t).await
+        query_doh(t, domain).await
     }
 }
 
-/// 测试单个 DNS 服务器：采样 rounds 次，至少一次成功才算成功
-pub async fn test_single(server: &str, rounds: usize) -> TestResult {
+/// 测试单个 DNS 服务器：对每个域名采样 rounds 次，至少一个域名成功才算成功；
+/// 服务器延迟取各成功域名的最小值（最快域名最能代表服务器能力，
+/// 个别域名慢可能是其权威链路问题而非服务器问题）
+pub async fn test_single(server: &str, rounds: usize, domains: &[String]) -> TestResult {
     let server = match parse_server(server) {
         Ok(s) => s,
         Err(e) => {
@@ -207,7 +241,7 @@ pub async fn test_single(server: &str, rounds: usize) -> TestResult {
                 success: false,
                 error: Some(e),
                 suspect: None,
-                answer_ips: Vec::new(),
+                answers: BTreeMap::new(),
             };
         }
     };
@@ -215,19 +249,25 @@ pub async fn test_single(server: &str, rounds: usize) -> TestResult {
     let mut latencies: Vec<u64> = Vec::new();
     let mut last_error: Option<String> = None;
     let mut source_ip: Option<IpAddr> = None;
-    let mut answer_ips: Vec<IpAddr> = Vec::new();
-    for _ in 0..rounds {
-        match query_once(&server).await {
-            Ok(o) => {
-                latencies.push(o.latency_ms);
-                source_ip = o.source_ip;
-                answer_ips = o.answer_ips;
+    let mut answers: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut domain_ok = 0usize;
+    for domain in domains {
+        let mut domain_ok_round = 0usize;
+        for _ in 0..rounds {
+            match query_once(&server, domain).await {
+                Ok(o) => {
+                    latencies.push(o.latency_ms);
+                    source_ip = o.source_ip;
+                    answers.insert(domain.clone(), o.answers);
+                    domain_ok_round += 1;
+                }
+                Err(e) => last_error = Some(e),
             }
-            Err(e) => last_error = Some(e),
         }
+        domain_ok += usize::from(domain_ok_round > 0);
     }
 
-    if latencies.is_empty() {
+    if domain_ok == 0 {
         return TestResult {
             server,
             latency_ms: 0,
@@ -236,7 +276,7 @@ pub async fn test_single(server: &str, rounds: usize) -> TestResult {
             success: false,
             error: Some(last_error.unwrap_or_else(|| "DNS 查询失败".into())),
             suspect: None,
-            answer_ips: Vec::new(),
+            answers,
         };
     }
 
@@ -262,7 +302,7 @@ pub async fn test_single(server: &str, rounds: usize) -> TestResult {
         success: true,
         error: None,
         suspect: hijack,
-        answer_ips,
+        answers,
     }
 }
 
@@ -280,7 +320,11 @@ pub fn sort_results(results: &mut Vec<TestResult>) {
 }
 
 /// 并行测试多个 DNS 服务器，按「成功在前、延迟升序」返回
-pub async fn test_multiple(servers: &[String], rounds: usize) -> Result<Vec<TestResult>, String> {
+pub async fn test_multiple(
+    servers: &[String],
+    rounds: usize,
+    domains: &[String],
+) -> Result<Vec<TestResult>, String> {
     if servers.is_empty() {
         return Err("没有要测试的 DNS 服务器".into());
     }
@@ -289,7 +333,8 @@ pub async fn test_multiple(servers: &[String], rounds: usize) -> Result<Vec<Test
     let mut handles = Vec::new();
     for s in servers {
         let server = s.clone();
-        handles.push(tokio::spawn(async move { test_single(&server, rounds).await }));
+        let domains = domains.to_vec();
+        handles.push(tokio::spawn(async move { test_single(&server, rounds, &domains).await }));
     }
 
     let mut results = Vec::with_capacity(handles.len());
@@ -304,7 +349,7 @@ pub async fn test_multiple(servers: &[String], rounds: usize) -> Result<Vec<Test
                 success: false,
                 error: Some(format!("任务异常: {e}")),
                 suspect: None,
-                answer_ips: Vec::new(),
+                answers: BTreeMap::new(),
             }),
         }
     }
@@ -314,24 +359,39 @@ pub async fn test_multiple(servers: &[String], rounds: usize) -> Result<Vec<Test
     Ok(results)
 }
 
-/// 应答多数对比：成功服务器 ≥ 2 时，应答集与多数派不同且频率更低的标记为疑似污染
+/// 逐域名应答多数对比：某域名成功服务器 ≥ 2 时，应答集与多数派不同且频率更低的标记为疑似污染
 fn flag_suspect_majority(results: &mut [TestResult]) {
-    use std::collections::BTreeMap;
-    let ok_count = results.iter().filter(|r| r.success).count();
-    if ok_count < 2 {
-        return;
-    }
-    let mut counts: BTreeMap<Vec<std::net::IpAddr>, usize> = BTreeMap::new();
-    for r in results.iter().filter(|r| r.success) {
-        *counts.entry(r.answer_ips.clone()).or_insert(0) += 1;
-    }
-    let (majority_set, majority_n) = match counts.iter().max_by_key(|(_, c)| *c) {
-        Some(m) => m,
-        None => return,
-    };
-    for r in results.iter_mut().filter(|r| r.success) {
-        if r.suspect.is_none() && r.answer_ips != *majority_set && counts[&r.answer_ips] < *majority_n {
-            r.suspect = Some("解析结果与其他多数服务器不一致（疑似污染）".into());
+    let domains: std::collections::BTreeSet<String> = results
+        .iter()
+        .filter(|r| r.success)
+        .flat_map(|r| r.answers.keys().cloned())
+        .collect();
+    for domain in domains {
+        // 先收集为自有数据，避免与后续可变借用冲突
+        let rows: Vec<(usize, Vec<String>)> = results
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.success)
+            .filter_map(|(i, r)| r.answers.get(&domain).map(|set| (i, set.clone())))
+            .collect();
+        if rows.len() < 2 {
+            continue;
+        }
+        let mut counts: BTreeMap<Vec<String>, usize> = BTreeMap::new();
+        for (_, set) in &rows {
+            *counts.entry(set.clone()).or_insert(0) += 1;
+        }
+        let (majority_set, majority_n) = match counts.iter().max_by_key(|(_, c)| *c) {
+            Some(m) => m,
+            None => continue,
+        };
+        for (i, set) in &rows {
+            if *set != *majority_set && counts[set] < *majority_n {
+                if results[*i].suspect.is_none() {
+                    results[*i].suspect =
+                        Some(format!("域名 {domain} 的解析结果与其他多数服务器不一致（疑似污染）"));
+                }
+            }
         }
     }
 }
@@ -355,38 +415,9 @@ mod tests {
         assert!(!is_valid_ipv4("1.2.3.4x"));
     }
 
-    #[test]
-    fn grade_thresholds() {
-        let ok = |ms: u64| TestResult {
-            server: "1.1.1.1".into(),
-            latency_ms: ms,
-            latency_min: ms,
-            latency_max: ms,
-            success: true,
-            error: None,
-            suspect: None,
-            answer_ips: Vec::new(),
-        };
-        assert_eq!(ok(0).grade(), "极佳");
-        assert_eq!(ok(49).grade(), "极佳");
-        assert_eq!(ok(50).grade(), "良好");
-        assert_eq!(ok(100).grade(), "一般");
-        assert_eq!(ok(200).grade(), "较慢");
-        assert_eq!(ok(999).grade(), "较慢");
-        let fail = TestResult {
-            server: "1.1.1.1".into(),
-            latency_ms: 0,
-            latency_min: 0,
-            latency_max: 0,
-            success: false,
-            error: Some("x".into()),
-            suspect: None,
-            answer_ips: Vec::new(),
-        };
-        assert_eq!(fail.grade(), "失败");
-    }
-
-    fn r(server: &str, ms: u64, success: bool) -> TestResult {
+    fn make_result(server: &str, ms: u64, success: bool, answers: Vec<(&str, Vec<String>)>) -> TestResult {
+        let map: BTreeMap<String, Vec<String>> =
+            answers.into_iter().map(|(d, v)| (d.to_string(), v)).collect();
         TestResult {
             server: server.into(),
             latency_ms: ms,
@@ -395,30 +426,38 @@ mod tests {
             success,
             error: None,
             suspect: None,
-            answer_ips: Vec::new(),
+            answers: map,
         }
     }
 
     #[test]
+    fn grade_thresholds() {
+        let ok = |ms: u64| make_result("1.1.1.1", ms, true, vec![("www.baidu.com.", vec!["1.1.1.1".into()])]);
+        assert_eq!(ok(0).grade(), "极佳");
+        assert_eq!(ok(49).grade(), "极佳");
+        assert_eq!(ok(50).grade(), "良好");
+        assert_eq!(ok(100).grade(), "一般");
+        assert_eq!(ok(200).grade(), "较慢");
+        assert_eq!(ok(999).grade(), "较慢");
+        let fail = make_result("1.1.1.1", 0, false, vec![]);
+        assert_eq!(fail.grade(), "失败");
+    }
+
+    fn r(server: &str, ms: u64, success: bool) -> TestResult {
+        make_result(server, ms, success, vec![])
+    }
+
+    #[test]
     fn suspect_majority_flags_minority_answers() {
-        let ip_a = "1.1.1.1".parse::<std::net::IpAddr>().unwrap();
-        let ip_b = "2.2.2.2".parse::<std::net::IpAddr>().unwrap();
-        let with_answer = |server: &str, ip: std::net::IpAddr| TestResult {
-            server: server.into(),
-            latency_ms: 20,
-            latency_min: 20,
-            latency_max: 20,
-            success: true,
-            error: None,
-            suspect: None,
-            answer_ips: vec![ip],
+        let with_answer = |server: &str, ip: &str| {
+            make_result(server, 20, true, vec![("www.baidu.com.", vec![ip.to_string()])])
         };
         // 3 个服务器回答 ip_a，1 个回答 ip_b → 少数派被标记
         let mut results = vec![
-            with_answer("s1", ip_a),
-            with_answer("s2", ip_a),
-            with_answer("s3", ip_a),
-            with_answer("s4", ip_b),
+            with_answer("s1", "1.1.1.1"),
+            with_answer("s2", "1.1.1.1"),
+            with_answer("s3", "1.1.1.1"),
+            with_answer("s4", "2.2.2.2"),
         ];
         flag_suspect_majority(&mut results);
         assert!(results[0].suspect.is_none());
@@ -426,9 +465,48 @@ mod tests {
         assert!(results[3].suspect.as_ref().unwrap().contains("不一致"));
 
         // 2:2 平票 → 不标记（避免误报）
-        let mut tie = vec![with_answer("s1", ip_a), with_answer("s2", ip_b)];
+        let mut tie = vec![with_answer("s1", "1.1.1.1"), with_answer("s2", "2.2.2.2")];
         flag_suspect_majority(&mut tie);
         assert!(tie[0].suspect.is_none() && tie[1].suspect.is_none());
+
+        // 逐域名独立对比：另一域名一致时不互相影响
+        let mut multi = vec![
+            make_result("s1", 20, true, vec![
+                ("a.com.", vec!["1.1.1.1".into()]),
+                ("b.com.", vec!["3.3.3.3".into()]),
+            ]),
+            make_result("s2", 20, true, vec![
+                ("a.com.", vec!["1.1.1.1".into()]),
+                ("b.com.", vec!["4.4.4.4".into()]),
+            ]),
+        ];
+        flag_suspect_majority(&mut multi);
+        // 两个域名都 1:1 平票 → 无标记
+        assert!(multi[0].suspect.is_none() && multi[1].suspect.is_none());
+    }
+
+    #[test]
+    fn domain_validation() {
+        assert_eq!(
+            parse_domains(&["www.baidu.com".into()]).unwrap(),
+            vec!["www.baidu.com.".to_string()]
+        );
+        // 已有点号不重复添加
+        assert_eq!(
+            parse_domains(&["example.com.".into()]).unwrap(),
+            vec!["example.com.".to_string()]
+        );
+        // 空项跳过，全空报错
+        assert!(parse_domains(&["  ".into(), "".into()]).is_err());
+        // 少于两段 / 非法字符 / 超长
+        assert!(parse_domains(&["nodot".into()]).is_err());
+        assert!(parse_domains(&["bad_domain.com".into()]).is_err());
+        assert!(parse_domains(&[format!("{}.com", "a".repeat(64))].into_iter().collect::<Vec<_>>()).is_err());
+        // 数量上限
+        let many: Vec<String> = (0..11).map(|i| format!("d{i}.com")).collect();
+        assert!(parse_domains(&many).is_err());
+        let ok10: Vec<String> = (0..10).map(|i| format!("d{i}.com")).collect();
+        assert_eq!(parse_domains(&ok10).unwrap().len(), 10);
     }
 
     #[test]
@@ -452,6 +530,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_empty_input() {
-        assert!(test_multiple(&[], DEFAULT_ROUNDS).await.is_err());
+        let domains = parse_domains(&["www.baidu.com".into()]).unwrap();
+        assert!(test_multiple(&[], DEFAULT_ROUNDS, &domains).await.is_err());
     }
 }

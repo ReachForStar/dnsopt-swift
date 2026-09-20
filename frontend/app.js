@@ -78,6 +78,16 @@ function parseInput() {
   return { valid, invalid };
 }
 
+// 域名输入：逗号/分号/换行分隔，去空去重，上限 10 个
+function parseDomains() {
+  const parts = $("domain-input").value
+    .split(/[,;\r\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const uniq = [...new Set(parts)];
+  return { domains: uniq.slice(0, 10), tooMany: uniq.length > 10 };
+}
+
 // ---------- 网络接口 ----------
 
 async function loadAdapters(keepName) {
@@ -224,14 +234,20 @@ async function runTest() {
     alert("没有找到有效的 DNS 服务器");
     return;
   }
+  const { domains, tooMany } = parseDomains();
+  if (tooMany) alert("域名超过 10 个，只测试前 10 个");
+  if (domains.length === 0) {
+    alert("请填写测试域名");
+    return;
+  }
 
   setBusy(true);
   const rounds = Number($("rounds-select").value);
-  setStatus("正在并行测试 " + valid.length + " 个 DNS 服务器（每服务器 " + rounds + " 轮）…", "busy");
+  setStatus("正在并行测试 " + valid.length + " 个 DNS 服务器（每服务器 " + rounds + " 轮 × " + domains.length + " 个域名）…", "busy");
   const started = Date.now();
 
   try {
-    results = await DnsTauri.invoke("testDns", { servers: valid, rounds });
+    results = await DnsTauri.invoke("testDns", { servers: valid, rounds, domains });
     renderResults();
     const ok = results.filter((r) => r.success);
     const secs = ((Date.now() - started) / 1000).toFixed(1);
@@ -323,6 +339,148 @@ async function flushCache() {
   } catch (e) {
     setStatus("DNS 缓存刷新失败: " + e, "err");
     alert("DNS 缓存刷新失败:\n" + e);
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ---------- 时序监控 ----------
+
+let monitorTimer = null;
+let monitorPoints = []; // [{ t, values: {server: ms} }]
+const MONITOR_MAX_POINTS = 120;
+const MONITOR_COLORS = ["#0d6efd", "#198754", "#fd7e14", "#d63384", "#6f42c1", "#0dcaf0", "#dc3545", "#6610f2"];
+
+function monitorTick() {
+  if (busy) return; // 上一轮未完成时跳过，避免请求堆积
+  const { valid } = parseInput();
+  const { domains } = parseDomains();
+  if (valid.length === 0 || domains.length === 0) {
+    stopMonitor();
+    return;
+  }
+  DnsTauri.invoke("testDns", { servers: valid, rounds: 1, domains })
+    .then((res) => {
+      const values = {};
+      for (const r of res) if (r.success) values[r.server] = r.latencyMs;
+      monitorPoints.push({ t: Date.now(), values });
+      if (monitorPoints.length > MONITOR_MAX_POINTS) monitorPoints.shift();
+      drawMonitorChart();
+    })
+    .catch(() => {});
+}
+
+function startMonitor() {
+  if (monitorTimer) return;
+  $("monitor-wrap").style.display = "";
+  $("btn-monitor").textContent = "停止监控";
+  monitorPoints = [];
+  monitorTick();
+  monitorTimer = setInterval(monitorTick, Number($("monitor-interval").value));
+}
+
+function stopMonitor() {
+  if (!monitorTimer) return;
+  clearInterval(monitorTimer);
+  monitorTimer = null;
+  $("btn-monitor").textContent = "开始监控";
+}
+
+function drawMonitorChart() {
+  const canvas = $("monitor-chart");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = { l: 44, r: 12, t: 24, b: 24 };
+  ctx.clearRect(0, 0, W, H);
+  if (monitorPoints.length < 2) {
+    ctx.fillStyle = "#8a94a6";
+    ctx.font = "12px sans-serif";
+    ctx.fillText("等待采样数据…", W / 2 - 40, H / 2);
+    return;
+  }
+  const servers = [...new Set(monitorPoints.flatMap((p) => Object.keys(p.values)))];
+  let maxMs = 10;
+  for (const p of monitorPoints) {
+    for (const v of Object.values(p.values)) maxMs = Math.max(maxMs, v);
+  }
+  maxMs = Math.ceil(maxMs / 50) * 50;
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+  // 坐标轴与网格
+  ctx.strokeStyle = "#d8dee4";
+  ctx.fillStyle = "#5c6675";
+  ctx.font = "11px sans-serif";
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + ph - (ph * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(W - pad.r, y);
+    ctx.stroke();
+    ctx.fillText(String(Math.round((maxMs * i) / 4)), 8, y + 4);
+  }
+  // 各服务器折线
+  servers.forEach((server, si) => {
+    const color = MONITOR_COLORS[si % MONITOR_COLORS.length];
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    monitorPoints.forEach((p, i) => {
+      const v = p.values[server];
+      if (v == null) return;
+      const x = pad.l + (pw * i) / (monitorPoints.length - 1);
+      const y = pad.t + ph - (ph * v) / maxMs;
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+    // 图例
+    ctx.fillStyle = color;
+    const ly = 12 + 13 * (si % 3);
+    const lx = 8 + 170 * Math.floor(si / 3);
+    ctx.fillRect(lx, ly - 8, 10, 3);
+    const label = server.length > 20 ? server.slice(0, 20) + "…" : server;
+    ctx.fillText(label, lx + 14, ly - 4);
+  });
+}
+
+// ---------- 诊断报告 ----------
+
+async function generateReport() {
+  setBusy(true);
+  setStatus("正在生成诊断报告…", "busy");
+  try {
+    // 有近期测试结果时一并写入报告
+    const report = await DnsTauri.invoke("diagnose", {
+      results: results.length ? results.map((r) => ({
+        server: r.server,
+        latencyMs: r.latencyMs,
+        latencyMin: r.latencyMin,
+        latencyMax: r.latencyMax,
+        success: r.success,
+        error: r.error,
+        suspect: r.suspect,
+      })) : null,
+    });
+    const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+    const path = await DnsTauri.dialog.save({
+      defaultPath: `dns-diagnose-${stamp}.txt`,
+      filters: [{ name: "文本", extensions: ["txt"] }],
+    });
+    if (!path) {
+      setStatus("已取消保存", "info");
+      return;
+    }
+    await DnsTauri.invoke("exportDns", { path, content: report });
+    setStatus("诊断报告已保存: " + path, "ok");
+  } catch (e) {
+    setStatus("生成报告失败: " + e, "err");
+    alert("生成报告失败:\n" + e);
   } finally {
     setBusy(false);
   }
@@ -458,6 +616,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-cache-close").addEventListener("click", () => $("cache-modal").classList.add("hidden"));
   $("btn-adapter-dns").addEventListener("click", showAdapterDns);
   $("btn-dns-modal-close").addEventListener("click", () => $("dns-modal").classList.add("hidden"));
+  $("btn-report").addEventListener("click", generateReport);
+  $("btn-monitor").addEventListener("click", () => (monitorTimer ? stopMonitor() : startMonitor()));
   $("btn-common").addEventListener("click", () => { input.value = COMMON_DNS.join("\n"); });
   $("btn-clear").addEventListener("click", () => { input.value = ""; });
   $("btn-import").addEventListener("click", importDns);

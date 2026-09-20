@@ -9,6 +9,7 @@ const USAGE: &str = r#"DNS延迟测试工具 CLI 用法:
   flush                    刷新本地 DNS 缓存
   cache                    查看系统 DNS 解析缓存
   dns <ifIndex>            查看接口当前配置的 DNS 服务器
+  diagnose [输出文件]       生成诊断报告（系统/网卡/当前DNS/缓存摘要）
   help                     显示本帮助"#;
 
 pub fn is_cli_mode(args: &[String]) -> bool {
@@ -21,6 +22,7 @@ pub fn is_cli_mode(args: &[String]) -> bool {
             | Some("auto")
             | Some("cache")
             | Some("dns")
+            | Some("diagnose")
             | Some("help")
             | Some("--help")
             | Some("-h")
@@ -96,8 +98,9 @@ fn run_inner(args: &[String]) -> Result<String, String> {
                 rest.to_vec()
             };
             let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+            let domains = crate::dns::parse_domains(&[crate::dns::TEST_DOMAIN.trim_end_matches('.').to_string()])?;
             let results =
-                runtime.block_on(crate::dns::test_multiple(&servers, crate::dns::DEFAULT_ROUNDS))?;
+                runtime.block_on(crate::dns::test_multiple(&servers, crate::dns::DEFAULT_ROUNDS, &domains))?;
             let mut lines = vec!["DNS服务器\t延迟(ms)\t状态".to_string()];
             for r in &results {
                 let status = if r.success {
@@ -137,6 +140,14 @@ fn run_inner(args: &[String]) -> Result<String, String> {
                 return Ok("该接口未配置 DNS 服务器（自动获取/DHCP）".into());
             }
             Ok(ips.join("\n"))
+        }
+        "diagnose" => {
+            let [file, ..] = rest else {
+                return Ok(crate::net::diagnose(None));
+            };
+            let report = crate::net::diagnose(None);
+            std::fs::write(file, &report).map_err(|e| format!("写入文件失败: {e}"))?;
+            Ok(format!("诊断报告已保存到: {file}"))
         }
         "set" => {
             let [idx, dns1, rest2 @ ..] = rest else {

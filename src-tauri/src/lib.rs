@@ -17,6 +17,7 @@ pub fn run() {
             flush_cache,
             get_dns_cache,
             get_dns_servers,
+            diagnose,
             import_dns,
             export_dns,
         ])
@@ -36,6 +37,7 @@ pub fn test_app() -> tauri::App<tauri::test::MockRuntime> {
             flush_cache,
             get_dns_cache,
             get_dns_servers,
+            diagnose,
             import_dns,
             export_dns,
         ])
@@ -44,10 +46,18 @@ pub fn test_app() -> tauri::App<tauri::test::MockRuntime> {
 }
 
 #[tauri::command(rename = "testDns")]
-async fn test_dns(servers: Vec<String>, rounds: Option<u32>) -> Result<Vec<dns::TestResult>, String> {
-    // 旧前端不传 rounds 时保持默认 3 轮（向后兼容）
+async fn test_dns(
+    servers: Vec<String>,
+    rounds: Option<u32>,
+    domains: Option<Vec<String>>,
+) -> Result<Vec<dns::TestResult>, String> {
+    // 旧前端不传 rounds/domains 时保持默认（向后兼容）
     let rounds = rounds.unwrap_or(dns::DEFAULT_ROUNDS as u32).clamp(1, dns::MAX_ROUNDS as u32);
-    dns::test_multiple(&servers, rounds as usize).await
+    let domains = match domains {
+        Some(d) if !d.is_empty() => dns::parse_domains(&d)?,
+        _ => vec![dns::TEST_DOMAIN.to_string()],
+    };
+    dns::test_multiple(&servers, rounds as usize, &domains).await
 }
 
 #[tauri::command(rename = "listAdapters")]
@@ -79,6 +89,12 @@ fn get_dns_cache() -> Result<Vec<net::CacheEntry>, String> {
 #[tauri::command(rename = "getDnsServers")]
 fn get_dns_servers(if_index: u32) -> Result<Vec<String>, String> {
     net::get_dns_servers(if_index)
+}
+
+/// 生成诊断报告（系统/网卡/当前 DNS/缓存摘要 + 可选测试结果），返回文本
+#[tauri::command(rename = "diagnose")]
+fn diagnose(results: Option<Vec<dns::TestResult>>) -> Result<String, String> {
+    Ok(net::diagnose(results))
 }
 
 #[tauri::command(rename = "importDns")]

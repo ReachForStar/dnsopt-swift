@@ -41,6 +41,9 @@
               <option value="20">20</option>
             </select>
           </label>
+          <label class="rounds-label">测试域名
+            <input id="domain-input" type="text" value="www.baidu.com" spellcheck="false" placeholder="逗号/换行分隔，最多 10 个" />
+          </label>
         </div>
       </section>
 
@@ -57,6 +60,22 @@
             <tbody></tbody>
           </table>
         </div>
+        <div class="toolbar monitor-bar">
+          <label class="rounds-label">监控间隔
+            <select id="monitor-interval">
+              <option value="5000">5秒</option>
+              <option value="10000" selected>10秒</option>
+              <option value="30000">30秒</option>
+              <option value="60000">1分钟</option>
+              <option value="300000">5分钟</option>
+            </select>
+          </label>
+          <button id="btn-monitor" class="btn btn-sm btn-accent">开始监控</button>
+          <span class="hint" id="monitor-hint">延迟随时间变化（折线为各服务器平均延迟）</span>
+        </div>
+        <div class="monitor-chart-wrap" id="monitor-wrap" style="display: none">
+          <canvas id="monitor-chart" width="600" height="220"></canvas>
+        </div>
       </section>
     </main>
 
@@ -71,6 +90,7 @@
         <button id="btn-restore" class="btn btn-ghost">恢复自动DNS</button>
         <button id="btn-flush" class="btn btn-warn">刷新DNS缓存</button>
         <button id="btn-cache" class="btn btn-ghost">查看缓存</button>
+        <button id="btn-report" class="btn btn-ghost">生成报告</button>
       </div>
     </section>
 

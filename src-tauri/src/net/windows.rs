@@ -191,6 +191,89 @@ pub fn get_dns_servers(if_index: u32) -> Result<Vec<String>, String> {
     Ok(ips)
 }
 
+/// 系统版本与当前时间（单次 PowerShell 调用）
+fn system_info() -> (String, String) {
+    let script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; \
+                  $os = Get-CimInstance Win32_OperatingSystem; \
+                  [PSCustomObject]@{OS=\"$($os.Caption) $($os.Version)\"; Now=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')} | ConvertTo-Json -Compress";
+    match powershell(&["-NoProfile".into(), "-Command".into(), script.to_string()]) {
+        Ok(out) => {
+            let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap_or_default();
+            let os = v.get("OS").and_then(|c| c.as_str()).unwrap_or("未知").to_string();
+            let now = v.get("Now").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            (os, now)
+        }
+        Err(e) => (format!("未知（{e}）"), String::new()),
+    }
+}
+
+/// 生成诊断报告：系统/网卡与当前 DNS/解析缓存摘要/可选测试结果（报障分享用）
+pub fn diagnose(results: Option<Vec<crate::dns::TestResult>>) -> String {
+    let mut s = String::new();
+    let (os, now) = system_info();
+    s.push_str("DNS延迟测试工具诊断报告\n============================\n");
+    if !now.is_empty() {
+        s.push_str(&format!("生成时间: {now}\n"));
+    }
+    s.push_str(&format!("系统: {os}\n"));
+
+    s.push_str("\n网络接口:\n");
+    match list_adapters() {
+        Ok(adapters) if !adapters.is_empty() => {
+            for a in &adapters {
+                let state = if a.is_connected() { "已连接" } else { "未连接" };
+                s.push_str(&format!("- {} (ifIndex {}, {})\n", a.name, a.if_index, state));
+                if a.is_connected() {
+                    match get_dns_servers(a.if_index) {
+                        Ok(ips) if ips.is_empty() => {
+                            s.push_str("  当前DNS: 未配置（自动获取）\n");
+                        }
+                        Ok(ips) => s.push_str(&format!("  当前DNS: {}\n", ips.join(", "))),
+                        Err(e) => s.push_str(&format!("  当前DNS: 读取失败（{e}）\n")),
+                    }
+                }
+            }
+        }
+        Ok(_) => s.push_str("  （未找到网络接口）\n"),
+        Err(e) => s.push_str(&format!("  读取失败: {e}\n")),
+    }
+
+    s.push_str("\nDNS 解析缓存:\n");
+    match get_dns_cache() {
+        Ok(entries) if entries.is_empty() => s.push_str("  （空）\n"),
+        Ok(entries) => {
+            s.push_str(&format!("  共 {} 条，前 10 条:\n", entries.len()));
+            for e in entries.iter().take(10) {
+                s.push_str(&format!("  {} -> {}\n", e.name, e.address));
+            }
+        }
+        Err(e) => s.push_str(&format!("  读取失败: {e}\n")),
+    }
+
+    if let Some(results) = results {
+        s.push_str("\n测试结果:\n");
+        s.push_str("DNS服务器\t延迟(ms)\t状态\n");
+        for r in &results {
+            let status = if r.success {
+                let base = r.grade().to_string();
+                match &r.suspect {
+                    Some(reason) => format!("{base} ⚠ {reason}"),
+                    None => base,
+                }
+            } else {
+                format!("失败: {}", r.error.as_deref().unwrap_or("未知原因"))
+            };
+            s.push_str(&format!(
+                "{}\t{}\t{}\n",
+                r.server,
+                if r.success { r.latency_ms.to_string() } else { "N/A".into() },
+                status
+            ));
+        }
+    }
+    s
+}
+
 /// 单引号内转义（PowerShell 单引号字符串以 '' 转义 '）
 fn ps_quote(s: &str) -> String {
     s.replace('\'', "''")

@@ -145,6 +145,58 @@ fn get_dns_servers_command() {
     }
 }
 
+/// diagnose：真实系统调用，返回含系统/接口/缓存摘要的报告文本
+#[test]
+fn diagnose_command() {
+    let app = test_app();
+    let webview = make_webview(&app);
+    let body = invoke(&webview, "diagnose", serde_json::json!({ "results": null }))
+        .expect("diagnose 应成功");
+    let report: String = body.deserialize().unwrap();
+    assert!(report.contains("诊断报告"));
+    assert!(report.contains("网络接口"));
+    assert!(report.contains("DNS 解析缓存"));
+}
+
+/// testDns 多域名：domains 参数生效，结果服务器数与输入一致
+#[test]
+fn test_dns_with_domains() {
+    let app = test_app();
+    let webview = make_webview(&app);
+    let body = invoke(
+        &webview,
+        "testDns",
+        serde_json::json!({
+            "servers": ["223.5.5.5"],
+            "rounds": 1,
+            "domains": ["www.qq.com"],
+        }),
+    )
+    .expect("testDns 应成功");
+    let results: Vec<dns::TestResult> = body.deserialize().unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(results[0].success, "223.5.5.5 应可解析 www.qq.com");
+}
+
+/// testDns 多域名校验：非法域名应报错
+#[test]
+fn test_dns_invalid_domain() {
+    let app = test_app();
+    let webview = make_webview(&app);
+    let err = invoke(
+        &webview,
+        "testDns",
+        serde_json::json!({
+            "servers": ["223.5.5.5"],
+            "rounds": 1,
+            "domains": ["nodot"],
+        }),
+    )
+    .expect_err("非法域名应失败");
+    let msg = err.to_string();
+    assert!(msg.contains("域名"), "错误应指明域名问题: {msg}");
+}
+
 /// DoH 通道：https URL 服务器可测，结果形态自洽（网络环境决定成败）
 #[test]
 fn doh_server_contract() {
