@@ -24,3 +24,20 @@
 - README 同步更新（去 legacy 章节、补测试小节与项目结构）
 - GUI：删除与"应用选定DNS"重复的"应用最优DNS"按钮（测试后主副下拉已自动选最快两个）
 - 验证：cargo test 12 项全通过；用户 GUI 走查全部功能通过
+
+## [2026-09-20] 功能扩展第二轮批次 3
+
+- 诊断报告：diagnose 命令（系统/网卡/各接口当前 DNS/缓存摘要/可选测试结果），CLI `diagnose [文件]`，前端「生成报告」导出 txt
+- 时序监控：前端监控模式（间隔 5s–5min，循环单轮测试，canvas 折线图保留 120 点）
+- 多域名测试：testDns 加 domains 参数（1..=10）；服务器延迟取各成功域名最优值；污染判定按域名独立多数对比
+- 验证：cargo test 14 单测 + 10 IPC 全通过；CLI diagnose 实测输出完整
+
+## [2026-09-20] 修复 CI/Release 工作流、修复诊断报告字段契约
+
+- 根因：`ci.yml` / `release.yml` 都引用不存在的 action `dtolnay/rust-action`（正确名 `dtolnay/rust-toolchain`），run 在 5–9 秒内失败于 "Set up job"，annotation `Unable to resolve action ... repository not found`，日志层看不到任何 cargo 输出
+- CI 改造：`windows-latest` + `dtolnay/rust-toolchain@stable` + `Swatinem/rust-cache@v2(workspaces: src-tauri)`；push main 追加 `build-installer` job（tauri-action 构建 NSIS + upload-artifact，PR 不跑）
+- Release 改造：tag `v*` 触发，改用 `tauri-apps/tauri-action@v0` 构建并创建 Release（替代 `cargo install tauri-cli` + `softprops/action-gh-release`），加 `permissions: contents: write`
+- 修复 GUI「生成报告」报 `invalid args 'results' ... missing field jitterMs`：前端改为透传 testDns 结果（原手写字段映射漏 jitterMs/lossRate），`TestResult` 统计字段加 `#[serde(default)]`，新增 `diagnose_with_results` IPC 回归测试
+- 验证：CI run 35524075048（test）与 35524363087（test 1m53s + build-installer 6m10s，artifact 3.4MB）均 success；本地 cargo test 28 项（15 单测 + 13 IPC）全通过
+- 文档：README 补下载安装、DoH/污染检测/时序监控/诊断报告、CLI 全命令、CI 与发布流程；仓库描述与 topics 更新为 Rust/Tauri 版
+- 发布：`v3.0.0` tag 推送后由 release.yml 构建 NSIS 安装包并创建 Release
