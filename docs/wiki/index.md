@@ -13,3 +13,4 @@
 ## queries（排查/分析）
 
 - [PowerShell 提权与 Rust 构建的坑（Windows）](queries/powershell-uac-and-gotchas.md) — 引号/EncodedCommand、Get-NetAdapter 本地化、GUI 控制台、hickory 0.26 API
+- [Tauri 命令名契约与测试二进制清单缺失（0xc0000139）](queries/tauri-command-naming-and-test-binary-manifest.md) — rename/rename_all 真实语义、comctl32 v6 清单只嵌入 bin、IPC 契约测试方法
