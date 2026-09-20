@@ -118,7 +118,9 @@ body {
 .toolbar {
   display: flex;
   gap: 8px;
-  justify-content: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   padding: 10px;
   border-top: 1px solid var(--border);
 }
@@ -247,7 +249,6 @@ select:focus { border-color: var(--primary); }
 
 /* ---------- 采样次数 ---------- */
 .rounds-label {
-  margin-left: auto;
   font-size: 13px;
   color: var(--muted);
   display: inline-flex;
@@ -333,6 +334,7 @@ select:focus { border-color: var(--primary); }
   border-radius: var(--radius);
   padding: 8px;
   background: var(--bg);
+  flex-shrink: 0;
 }
 #monitor-chart {
   width: 100%;
