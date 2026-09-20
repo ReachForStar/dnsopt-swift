@@ -44,11 +44,21 @@ push 到 `main` 时额外跑 `build-installer`：用 `tauri-action`（不带 tag
 | 触发 | push tag `v*` |
 | 运行环境 | `windows-latest`，超时 60 分钟 |
 | 权限 | `permissions: contents: write`（创建 release 与上传资产需要） |
-| 构建与上传 | `tauri-apps/tauri-action@v0`：`tagName: ${{ github.ref_name }}`、`releaseName: DNS延迟测试工具 <tag>`、`releaseDraft: false` |
+| 构建与上传 | `tauri-apps/tauri-action@v0`：`tagName: ${{ github.ref_name }}`、`releaseName: DNS延迟测试工具 <tag>`、`releaseDraft: false`、`releaseBody`（安装说明 + README/变更记录链接） |
 | 产物 | NSIS 安装包 `src-tauri/target/release/bundle/nsis/*.exe`（targets 在 `tauri.conf.json` 的 `bundle.targets` 指定） |
+
+首次验证：tag `v3.0.0` → run 35524785071 的 build job 7m25s 成功，Release 资产 `DNS._3.0.0_x64-setup.exe`（3.4 MB）。
+
+### NSIS 产物文件名
+
+安装包文件名由 `productName` 经 ASCII 过滤生成，而本项目 `productName` 是中文「DNS延迟测试工具」，
+故实际资产名变成 `DNS._3.0.0_x64-setup.exe`（中文全被丢弃，只剩 `DNS.` 与版本后缀）。
+`tauri.conf.json` 没有重命名安装包的配置项（已查 config schema v2 的 `NsisConfig`，只有图标/语言/压缩/钩子等），
+所以在 README 与 Release 说明里按实际名（`*-setup.exe`）描述，不假装它是可读名称。
 
 `tauri-action` 取代了早期的「`cargo install tauri-cli` → `cargo tauri build` → `softprops/action-gh-release`」
 三段手工步骤：它自带头 tauri CLI 获取与 bundle 产物上传，避免每次发布从源码编译 tauri-cli。
+不带 `tagName`/`releaseId` 时它只构建、不碰 Release，因此 CI 的 `build-installer` 复用了同一个 action。
 
 ## 发布流程
 

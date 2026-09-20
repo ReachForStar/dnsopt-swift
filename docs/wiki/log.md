@@ -40,4 +40,6 @@
 - 修复 GUI「生成报告」报 `invalid args 'results' ... missing field jitterMs`：前端改为透传 testDns 结果（原手写字段映射漏 jitterMs/lossRate），`TestResult` 统计字段加 `#[serde(default)]`，新增 `diagnose_with_results` IPC 回归测试
 - 验证：CI run 35524075048（test）与 35524363087（test 1m53s + build-installer 6m10s，artifact 3.4MB）均 success；本地 cargo test 28 项（15 单测 + 13 IPC）全通过
 - 文档：README 补下载安装、DoH/污染检测/时序监控/诊断报告、CLI 全命令、CI 与发布流程；仓库描述与 topics 更新为 Rust/Tauri 版
-- 发布：`v3.0.0` tag 推送后由 release.yml 构建 NSIS 安装包并创建 Release
+- 发布：tag `v3.0.0`（Release run 35524785071，build 7m25s）创建 Release v3.0.0，资产 `DNS._3.0.0_x64-setup.exe`（3.4 MB）；
+  安装包文件名由中文 productName 经 ASCII 过滤而来（现无重命名配置项），Release 说明与 README 按实际名描述
+- 仓库信息：description 改为 Rust/Tauri 版描述，topics 补 dns/dns-test/latency-test/tauri/rust/windows/doh/nsis
