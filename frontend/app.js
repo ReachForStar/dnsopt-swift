@@ -330,6 +330,45 @@ async function flushCache() {
 
 // ---------- 查看缓存 ----------
 
+// 查看所选接口当前配置的 DNS 服务器
+async function showAdapterDns() {
+  const adapter = selectedAdapter();
+  if (!adapter) {
+    alert("请先选择网络接口");
+    return;
+  }
+  setBusy(true);
+  setStatus("正在读取 " + adapter.name + " 的 DNS 配置…", "busy");
+  try {
+    const ips = await DnsTauri.invoke("getDnsServers", { ifIndex: adapter.ifIndex });
+    $("dns-modal-title").textContent = adapter.name + "（ifIndex " + adapter.ifIndex + "）当前 DNS";
+    const tbody = document.querySelector("#dns-server-table tbody");
+    tbody.innerHTML = "";
+    if (!ips.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.textContent = "未配置 DNS（自动获取/DHCP）";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      ips.forEach((ip, i) => {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.textContent = ip + (i === 0 ? "（首选）" : "（辅助）");
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      });
+    }
+    $("dns-modal").classList.remove("hidden");
+    setStatus("已读取 " + adapter.name + " 的 " + ips.length + " 个 DNS 服务器", "ok");
+  } catch (e) {
+    setStatus("读取接口 DNS 失败: " + e, "err");
+    alert("读取接口 DNS 失败:\n" + e);
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function showCache() {
   setBusy(true);
   setStatus("正在读取 DNS 解析缓存…", "busy");
@@ -417,6 +456,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-flush").addEventListener("click", flushCache);
   $("btn-cache").addEventListener("click", showCache);
   $("btn-cache-close").addEventListener("click", () => $("cache-modal").classList.add("hidden"));
+  $("btn-adapter-dns").addEventListener("click", showAdapterDns);
+  $("btn-dns-modal-close").addEventListener("click", () => $("dns-modal").classList.add("hidden"));
   $("btn-common").addEventListener("click", () => { input.value = COMMON_DNS.join("\n"); });
   $("btn-clear").addEventListener("click", () => { input.value = ""; });
   $("btn-import").addEventListener("click", importDns);

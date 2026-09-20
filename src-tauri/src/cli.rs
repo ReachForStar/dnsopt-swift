@@ -8,6 +8,7 @@ const USAGE: &str = r#"DNS延迟测试工具 CLI 用法:
   auto <ifIndex>           恢复自动获取 DNS（触发 UAC 管理员确认）
   flush                    刷新本地 DNS 缓存
   cache                    查看系统 DNS 解析缓存
+  dns <ifIndex>            查看接口当前配置的 DNS 服务器
   help                     显示本帮助"#;
 
 pub fn is_cli_mode(args: &[String]) -> bool {
@@ -19,6 +20,7 @@ pub fn is_cli_mode(args: &[String]) -> bool {
             | Some("set")
             | Some("auto")
             | Some("cache")
+            | Some("dns")
             | Some("help")
             | Some("--help")
             | Some("-h")
@@ -124,6 +126,17 @@ fn run_inner(args: &[String]) -> Result<String, String> {
                 lines.push(format!("{}\t{}", e.name, e.address));
             }
             Ok(lines.join("\n"))
+        }
+        "dns" => {
+            let [idx, ..] = rest else {
+                return Err("用法: dns <ifIndex>".into());
+            };
+            let if_index: u32 = idx.parse().map_err(|e| format!("ifIndex 无效: {e}"))?;
+            let ips = crate::net::get_dns_servers(if_index)?;
+            if ips.is_empty() {
+                return Ok("该接口未配置 DNS 服务器（自动获取/DHCP）".into());
+            }
+            Ok(ips.join("\n"))
         }
         "set" => {
             let [idx, dns1, rest2 @ ..] = rest else {

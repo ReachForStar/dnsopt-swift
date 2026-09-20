@@ -16,6 +16,7 @@ pub fn run() {
             reset_dns,
             flush_cache,
             get_dns_cache,
+            get_dns_servers,
             import_dns,
             export_dns,
         ])
@@ -34,6 +35,7 @@ pub fn test_app() -> tauri::App<tauri::test::MockRuntime> {
             reset_dns,
             flush_cache,
             get_dns_cache,
+            get_dns_servers,
             import_dns,
             export_dns,
         ])
@@ -71,6 +73,12 @@ fn flush_cache() -> Result<String, String> {
 #[tauri::command(rename = "getDnsCache")]
 fn get_dns_cache() -> Result<Vec<net::CacheEntry>, String> {
     net::get_dns_cache()
+}
+
+/// 查看接口当前配置的 DNS 服务器列表（只读）
+#[tauri::command(rename = "getDnsServers")]
+fn get_dns_servers(if_index: u32) -> Result<Vec<String>, String> {
+    net::get_dns_servers(if_index)
 }
 
 #[tauri::command(rename = "importDns")]

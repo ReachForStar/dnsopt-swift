@@ -175,6 +175,22 @@ pub fn list_adapters() -> Result<Vec<Adapter>, String> {
     Ok(raws.into_iter().map(Adapter::from_raw).collect())
 }
 
+/// 查询接口当前配置的 DNS 服务器（Get-DnsClientServerAddress，只读无需管理员；
+/// 接口未配置静态 DNS 时返回空列表）
+pub fn get_dns_servers(if_index: u32) -> Result<Vec<String>, String> {
+    let script = format!(
+        "Get-DnsClientServerAddress -InterfaceIndex {if_index} | Select-Object -ExpandProperty ServerAddresses | ForEach-Object {{ $_.ToString() }}"
+    );
+    let out = powershell(&["-NoProfile".into(), "-Command".into(), script])?;
+    let ips: Vec<String> = out
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && l.parse::<std::net::IpAddr>().is_ok())
+        .map(|l| l.to_string())
+        .collect();
+    Ok(ips)
+}
+
 /// 单引号内转义（PowerShell 单引号字符串以 '' 转义 '）
 fn ps_quote(s: &str) -> String {
     s.replace('\'', "''")

@@ -125,6 +125,26 @@ fn get_dns_cache_command() {
     }
 }
 
+/// getDnsServers：只读查询接口当前 DNS，元素必为合法 IP（无静态 DNS 时为空数组）
+#[test]
+fn get_dns_servers_command() {
+    let app = test_app();
+    let webview = make_webview(&app);
+    let body = invoke(&webview, "listAdapters", serde_json::json!({})).expect("listAdapters 应成功");
+    let adapters: Vec<net::Adapter> = body.deserialize().unwrap();
+    // 优先用已连接的接口（未连接接口通常无 DNS，空结果也能验证契约）
+    let if_index = match adapters.iter().find(|a| a.connected) {
+        Some(a) => a.if_index,
+        None => return,
+    };
+    let body = invoke(&webview, "getDnsServers", serde_json::json!({ "ifIndex": if_index }))
+        .expect("getDnsServers 应成功");
+    let ips: Vec<String> = body.deserialize().unwrap();
+    for ip in &ips {
+        assert!(ip.parse::<std::net::IpAddr>().is_ok(), "非法 IP: {ip}");
+    }
+}
+
 /// DoH 通道：https URL 服务器可测，结果形态自洽（网络环境决定成败）
 #[test]
 fn doh_server_contract() {

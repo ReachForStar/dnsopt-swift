@@ -13,6 +13,7 @@
         <label for="adapter-select">网络接口:</label>
         <select id="adapter-select" title="选择要设置 DNS 的网络接口"></select>
         <button id="btn-refresh-adapter" class="btn btn-ghost">刷新</button>
+        <button id="btn-adapter-dns" class="btn btn-ghost" title="查看所选接口当前配置的 DNS 服务器">查看DNS</button>
       </div>
       <div class="top-right">
         <button id="btn-test" class="btn btn-primary">开始测试</button>
@@ -73,7 +74,23 @@
       </div>
     </section>
 
-    <div id="cache-modal" class="modal-overlay hidden">
+    <!-- 接口当前 DNS 模态框 -->
+  <div id="dns-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="dns-modal-title">接口当前 DNS</h3>
+        <button id="btn-dns-modal-close" class="btn btn-sm btn-ghost">关闭</button>
+      </div>
+      <div class="modal-body">
+        <table id="dns-server-table">
+          <thead><tr><th>DNS服务器</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="cache-modal" class="modal-overlay hidden">
       <div class="modal">
         <div class="modal-head">
           <h3>系统 DNS 解析缓存</h3>
