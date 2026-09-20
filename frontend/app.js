@@ -18,6 +18,9 @@ const COMMON_DNS = [
   "111.170.166.6", "113.96.17.165", "183.2.141.97",
   "61.151.230.52", "14.215.166.64", "221.231.139.97",
   "14.215.166.106", "183.2.141.242",
+  // 加密 DoH（HTTPS 通道，参与污染对比但不做应答源校验）
+  "https://dns.alidns.com/dns-query",     // 阿里云 DoH
+  "https://doh.pub/dns-query",            // 公共解析 DoH
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -58,6 +61,11 @@ function isValidIpv4(s) {
   return m.slice(1).every((p) => Number(p) <= 255);
 }
 
+// 支持的服务器：IPv4 或 https DoH URL
+function isServer(s) {
+  return isValidIpv4(s) || (s.startsWith("https://") && !s.includes(" ") && s.length > 8);
+}
+
 function parseInput() {
   const lines = input.value.split(/\r?\n/);
   const valid = [];
@@ -65,7 +73,7 @@ function parseInput() {
   for (const raw of lines) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
-    (isValidIpv4(line) ? valid : invalid).push(line);
+    (isServer(line) ? valid : invalid).push(line);
   }
   return { valid, invalid };
 }
@@ -153,6 +161,17 @@ function renderResults() {
       badge.className = "badge " + GRADE_BADGE[grade];
       badge.textContent = grade;
       tdStatus.appendChild(badge);
+      if (r.suspect) {
+        const warn = document.createElement("span");
+        warn.className = "badge badge-suspect";
+        warn.textContent = "⚠ 可疑";
+        warn.title = r.suspect;
+        tdStatus.appendChild(warn);
+        const why = document.createElement("div");
+        why.className = "err-text";
+        why.textContent = r.suspect;
+        tdStatus.appendChild(why);
+      }
     } else {
       const badge = document.createElement("span");
       badge.className = "badge badge-fail";
@@ -198,7 +217,7 @@ async function runTest() {
   if (busy) return;
   const { valid, invalid } = parseInput();
   if (invalid.length > 0) {
-    alert("以下条目不是有效的 IPv4 地址，已跳过:\n" + invalid.join("\n"));
+    alert("以下条目不是有效的 DNS 服务器（IPv4 或 https DoH URL），已跳过:\n" + invalid.join("\n"));
   }
   if (valid.length === 0) {
     alert("没有找到有效的 DNS 服务器");

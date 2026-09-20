@@ -305,3 +305,9 @@ select:focus { border-color: var(--primary); }
   border-bottom: 1px solid #edf0f3;
 }
 #cache-table th { color: var(--muted); font-weight: 600; }
+
+.badge-suspect {
+  background: #fff3cd;
+  color: #8a6100;
+  border: 1px solid #f0d48a;
+}

@@ -125,6 +125,27 @@ fn get_dns_cache_command() {
     }
 }
 
+/// DoH 通道：https URL 服务器可测，结果形态自洽（网络环境决定成败）
+#[test]
+fn doh_server_contract() {
+    let app = test_app();
+    let webview = make_webview(&app);
+    let body = invoke(
+        &webview,
+        "testDns",
+        serde_json::json!({ "servers": ["https://dns.alidns.com/dns-query"], "rounds": 1 }),
+    )
+    .expect("DoH 服务器应可解析");
+    let results: Vec<dns::TestResult> = body.deserialize().unwrap();
+    assert_eq!(results.len(), 1);
+    let r = &results[0];
+    if r.success {
+        assert!(r.latency_ms > 0);
+    } else {
+        assert!(r.error.is_some());
+    }
+}
+
 /// applyDns/resetDns：参数名契约（不触发 UAC，缺参应在派发层报错）
 #[test]
 fn dns_commands_argument_contract() {
