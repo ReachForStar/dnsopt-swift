@@ -223,7 +223,7 @@ select:focus { border-color: var(--primary); }
   0% { transform: translateX(-100%); }
   100% { transform: translateX(275%); }
 }
-.hidden { display: none; }
+.hidden { display: none !important; }
 
 /* ---------- 延迟条形图 ---------- */
 .latency { min-width: 180px; }

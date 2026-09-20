@@ -49,41 +49,56 @@ pub fn get_dns_cache() -> Result<Vec<CacheEntry>, String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     let output = cmd.output().map_err(|e| format!("执行 ipconfig 失败: {e}"))?;
-    let text = String::from_utf8_lossy(&output.stdout);
+    let text = decode_console_output(&output.stdout);
     Ok(parse_dns_cache_output(&text))
 }
 
-/// 解析 displaydns 输出（逐行状态机，兼容中英文字段名）
+/// Windows 控制台程序（ipconfig 等）在中文系统上输出 GBK：先按 UTF-8 试，失败回退 GBK
+fn decode_console_output(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => encoding_rs::GBK.decode(bytes).0.to_string(),
+    }
+}
+
+/// 解析 `ipconfig /displaydns` 输出（兼容中英文系统，不依赖精确字段名）
+///
+/// 输出结构：块头为独占一行的域名（可缺省，由「记录名称」字段给出），
+/// 字段行形如 `xxx . . . . : 值`。只提取两类信息：
+/// - 「记录名称 / Record Name」字段的值 → 当前域名
+/// - 字段值为合法 IPv4 的行 → 一条缓存条目（A 记录）
 pub fn parse_dns_cache_output(out: &str) -> Vec<CacheEntry> {
     let mut entries = Vec::new();
     let mut current: Option<String> = None;
-    for line in out.lines() {
-        let t = line.trim();
-        if let Some(name) = displaydns_values(t, &["记录名称", "Record Name"]) {
-            current = Some(name);
-        } else if let Some(ip) = displaydns_values(t, &["IPv4 地址", "IPv4 Address"]) {
-            if let Some(name) = current.take() {
-                entries.push(CacheEntry { name, address: ip });
-            }
+    for raw in out.lines() {
+        let t = raw.trim();
+        if t.is_empty() || t.chars().all(|c| c == '-') {
+            continue;
         }
-    }
-    entries
-}
-
-/// 取 displaydns 行中字段后的值（如 "记录名称 . . . : xxx" → "xxx"）
-fn displaydns_values(line: &str, keys: &[&str]) -> Option<String> {
-    for key in keys {
-        if let Some(pos) = line.find(key) {
-            let rest = &line[pos + key.len()..];
-            if let Some(colon) = rest.find(':') {
-                let v = rest[colon + 1..].trim().to_string();
-                if !v.is_empty() {
-                    return Some(v);
+        match t.rfind(':') {
+            Some(colon) => {
+                let key = t[..colon].to_lowercase();
+                let value = t[colon + 1..].trim();
+                if value.is_empty() {
+                    continue;
+                }
+                if key.contains("记录名称") || key.contains("record name") {
+                    current = Some(value.to_string());
+                } else if value.parse::<std::net::Ipv4Addr>().is_ok() {
+                    if let Some(name) = current.clone() {
+                        entries.push(CacheEntry { name, address: value.to_string() });
+                    }
+                }
+            }
+            None => {
+                // 无冒号的独占域名行（块头）；排除含空格的标题行
+                if t.contains('.') && !t.contains(' ') {
+                    current = Some(t.to_string());
                 }
             }
         }
     }
-    None
+    entries
 }
 
 impl Adapter {
@@ -285,26 +300,43 @@ mod tests {
 
     #[test]
     fn parse_dns_cache_zh() {
+        // 真实中文系统 `ipconfig /displaydns` 输出格式（含 CNAME 链：A 记录归属块头域名）
         let out = "Windows IP Configuration\n\n\
-                   记录名称 . . . . . . . : www.baidu.com\n\
-                   记录类型 . . . . . . . : 5\n\
-                   生存时间 . . . . . . . : 600\n\
-                   IPv4 地址 . . . . . . . : 110.242.68.66\n\n\
-                   记录名称 . . . . . . . : example.com\n\
-                   IPv4 地址 . . . . . . . : 93.184.216.34\n";
+                   repo2.example.com\n\
+                   ----------------------------------------\n\
+                   记录名称. . . . . . . : repo2.example.com\n\
+                   记录类型. . . . . . . : 5\n\
+                   数据时间. . . . . . . : 549\n\
+                   数据长度. . . . . . . : 8\n\
+                   权威. . . . . . . . . : 否\n\
+                   CNAME 记录  . . . . : target.example.com\n\n\
+                   记录名称. . . . . . . : target.example.com\n\
+                   记录类型. . . . . . . : 1\n\
+                   数据时间. . . . . . . : 549\n\
+                   数据长度. . . . . . . : 4\n\
+                   权威. . . . . . . . . : 否\n\
+                   A (地址)记录  . . . . : 47.243.240.217\n\n\
+                   记录名称. . . . . . . : target.example.com\n\
+                   记录类型. . . . . . . : 1\n\
+                   A (地址)记录  . . . . : 8.210.159.229\n";
         let entries = parse_dns_cache_output(out);
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].name, "www.baidu.com");
-        assert_eq!(entries[0].address, "110.242.68.66");
-        assert_eq!(entries[1].name, "example.com");
-        assert_eq!(entries[1].address, "93.184.216.34");
+        assert_eq!(entries[0].name, "target.example.com");
+        assert_eq!(entries[0].address, "47.243.240.217");
+        assert_eq!(entries[1].name, "target.example.com");
+        assert_eq!(entries[1].address, "8.210.159.229");
     }
 
     #[test]
     fn parse_dns_cache_en() {
-        let out = "Record Name . . . . . . . : www.example.org\n\
-                   Record Type . . . . . . . : 5\n\
-                   IPv4 Address . . . . . . . : 192.0.2.7\n";
+        // 英文系统格式：Record Name + A (address) record
+        let out = "Windows IP Configuration\n\n\
+                   www.example.org\n\
+                   ----------------------------------------\n\
+                   Record Name  . . . . . . : www.example.org\n\
+                   Record Type  . . . . . . : 1\n\
+                   Data Time To Live  . . . : 300\n\
+                   A (address) record  . . . . : 192.0.2.7\n";
         let entries = parse_dns_cache_output(out);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "www.example.org");
@@ -314,8 +346,13 @@ mod tests {
     #[test]
     fn parse_dns_cache_empty() {
         assert!(parse_dns_cache_output("").is_empty());
-        // 无记录名称的孤立 IPv4 行不应产生条目
-        assert!(parse_dns_cache_output("IPv4 Address . . . . . . . : 1.2.3.4").is_empty());
+        // 无域名上下文的孤立 IPv4 行不应产生条目
+        assert!(parse_dns_cache_output("A (address) record  . . . . : 1.2.3.4\n").is_empty());
+        // 只有 CNAME 无 A 记录时不产生条目
+        assert!(parse_dns_cache_output("\n\
+                   a.example.com\n\
+                   Record Name  . . . . . . : a.example.com\n\
+                   CNAME record  . . . . : b.example.com\n").is_empty());
     }
 
     #[test]
