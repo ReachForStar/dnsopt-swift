@@ -1,62 +1,14 @@
 # 构建产物
-target/
-dependency-reduced-pom.xml
-*.class
-*.log
+src-tauri/target/
 
 # 本地知识库检索索引
 .qmd/
 
-# 误生成的 Windows 缓存目录
-%SystemDrive%/
-
-# IntelliJ IDEA
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
-*.iws
-*.iml
-*.ipr
-.idea/
-
-# Eclipse
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-# NetBeans
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+# 任务工作目录（临时文件）
+tmp/
 
 # VS Code
 .vscode/
 
 # Mac OS
 .DS_Store
-
-# BlueJ
-*.ctxt
-
-# 移动端/包文件（lib/ 下的 jar 已被 git 跟踪，不受影响）
-.mtj.tmp/
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
-
-# JVM 崩溃日志
-hs_err_pid*
