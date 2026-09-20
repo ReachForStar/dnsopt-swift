@@ -32,6 +32,8 @@
           <button id="btn-clear" class="btn btn-sm btn-danger">清空</button>
           <button id="btn-import" class="btn btn-sm btn-ghost">导入</button>
           <button id="btn-export" class="btn btn-sm btn-ghost">导出</button>
+        </div>
+        <div class="toolbar params-row">
           <label class="rounds-label">采样次数
             <select id="rounds-select">
               <option value="1">1</option>
@@ -42,7 +44,7 @@
             </select>
           </label>
           <label class="rounds-label">测试域名
-            <input id="domain-input" type="text" value="www.baidu.com" spellcheck="false" placeholder="逗号/换行分隔，最多 10 个" />
+            <input id="domain-input" type="text" value="www.baidu.com" spellcheck="false" placeholder="逗号分隔，最多 10 个" />
           </label>
         </div>
       </section>
@@ -71,7 +73,7 @@
             </select>
           </label>
           <button id="btn-monitor" class="btn btn-sm btn-accent">开始监控</button>
-          <span class="hint" id="monitor-hint">延迟随时间变化（折线为各服务器平均延迟）</span>
+          <span class="hint" id="monitor-hint">折线为各服务器平均延迟</span>
         </div>
         <div class="monitor-chart-wrap" id="monitor-wrap" style="display: none">
           <canvas id="monitor-chart" width="600" height="220"></canvas>

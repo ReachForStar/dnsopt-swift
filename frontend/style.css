@@ -316,13 +316,25 @@ select:focus { border-color: var(--primary); }
 /* 域名输入与监控区 */
 .domain-input,
 #domain-input {
-  width: 200px;
+  width: 150px;
+  min-width: 80px;
+  flex: 0 1 auto; /* 窄窗口下收缩而非撑破行 */
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
+}
+/* 左卡第二行：测试参数（与按钮行分开；nowrap 强制单行，窄窗口下输入框收缩） */
+.params-row {
+  border-top: none;
+  padding-top: 0;
+  flex-wrap: nowrap;
+}
+.params-row .rounds-label {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .monitor-bar {
   margin-top: 10px;
