@@ -1,10 +1,16 @@
-<<<<<<< HEAD
+# 构建产物
 target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-*.db
-### IntelliJ IDEA ###
+dependency-reduced-pom.xml
+*.class
+*.log
+
+# 本地知识库检索索引
+.qmd/
+
+# 误生成的 Windows 缓存目录
+%SystemDrive%/
+
+# IntelliJ IDEA
 .idea/modules.xml
 .idea/jarRepositories.xml
 .idea/compiler.xml
@@ -13,7 +19,8 @@ target/
 *.iml
 *.ipr
 .idea/
-### Eclipse ###
+
+# Eclipse
 .apt_generated
 .classpath
 .factorypath
@@ -22,7 +29,7 @@ target/
 .springBeans
 .sts4-cache
 
-### NetBeans ###
+# NetBeans
 /nbproject/private/
 /nbbuild/
 /dist/
@@ -32,25 +39,17 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### VS Code ###
+# VS Code
 .vscode/
 
-### Mac OS ###
+# Mac OS
 .DS_Store
-=======
-# Compiled class file
-*.class
 
-# Log file
-*.log
-
-# BlueJ files
+# BlueJ
 *.ctxt
 
-# Mobile Tools for Java (J2ME)
+# 移动端/包文件（lib/ 下的 jar 已被 git 跟踪，不受影响）
 .mtj.tmp/
-
-# Package Files #
 *.jar
 *.war
 *.nar
@@ -59,6 +58,5 @@ build/
 *.tar.gz
 *.rar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+# JVM 崩溃日志
 hs_err_pid*
->>>>>>> c01fe18ec50a04cae6fd3282d15aaf12f1350d55
