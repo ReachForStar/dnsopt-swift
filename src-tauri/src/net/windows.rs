@@ -15,12 +15,36 @@ pub struct Adapter {
     pub status: String,
     #[serde(rename = "ifIndex")]
     pub if_index: u32,
+    /// 连接状态由 Rust 侧统一判定后序列化，前端不再自行解析状态文案
+    /// （PowerShell 7 的状态是 Up/Disconnected，中文文案匹配会误判为未连接）
+    pub connected: bool,
+}
+
+/// Get-NetAdapter JSON 的原始形状（无 connected 字段）
+#[derive(Debug, Deserialize)]
+struct RawAdapter {
+    #[serde(alias = "Name")]
+    name: String,
+    #[serde(alias = "Status")]
+    status: String,
+    #[serde(alias = "ifIndex")]
+    if_index: u32,
 }
 
 impl Adapter {
+    fn from_raw(r: RawAdapter) -> Self {
+        let connected = Self::status_connected(&r.status);
+        Self {
+            name: r.name,
+            status: r.status,
+            if_index: r.if_index,
+            connected,
+        }
+    }
+
     /// 兼容中文系统（已连接/已断开）、英文（Connected/Disconnected）与 pwsh 7（Up）的状态文案
-    pub fn is_connected(&self) -> bool {
-        let s = self.status.to_lowercase();
+    fn status_connected(status: &str) -> bool {
+        let s = status.to_lowercase();
         if s.contains("已连接") || s == "up" {
             return true;
         }
@@ -28,6 +52,10 @@ impl Adapter {
             return false;
         }
         s.contains("connected")
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.connected
     }
 }
 
@@ -72,7 +100,9 @@ pub fn list_adapters() -> Result<Vec<Adapter>, String> {
     if out.is_empty() {
         return Err("Get-NetAdapter 无输出，请确认系统已安装网络组件".into());
     }
-    serde_json::from_str(out).map_err(|e| format!("解析网络接口列表失败: {e}"))
+    let raws: Vec<RawAdapter> =
+        serde_json::from_str(out).map_err(|e| format!("解析网络接口列表失败: {e}"))?;
+    Ok(raws.into_iter().map(Adapter::from_raw).collect())
 }
 
 /// 单引号内转义（PowerShell 单引号字符串以 '' 转义 '）
@@ -188,48 +218,29 @@ mod tests {
     }
 
     #[test]
-    fn adapter_connected_localized() {
-        let a = Adapter {
-            name: "WLAN".into(),
-            status: "已连接".into(),
-            if_index: 12,
-        };
-        assert!(a.is_connected());
-        let b = Adapter {
-            name: "Ethernet".into(),
-            status: "Connected".into(),
-            if_index: 7,
-        };
-        assert!(b.is_connected());
-        // pwsh 7 输出英文 Up
-        let d = Adapter {
-            name: "WLAN".into(),
-            status: "Up".into(),
-            if_index: 16,
-        };
-        assert!(d.is_connected());
+    fn adapter_status_connected_localized() {
+        // 中文系统（5.1 输出）、英文（Connected）、pwsh 7（Up）
+        assert!(Adapter::status_connected("已连接"));
+        assert!(Adapter::status_connected("Connected"));
+        assert!(Adapter::status_connected("Up"));
         // 注意：Disconnected 不能误判为已连接
-        let c = Adapter {
-            name: "Loopback".into(),
-            status: "Disconnected".into(),
-            if_index: 1,
-        };
-        assert!(!c.is_connected());
-        let e = Adapter {
-            name: "以太网 2".into(),
-            status: "已断开".into(),
-            if_index: 24,
-        };
-        assert!(!e.is_connected());
+        assert!(!Adapter::status_connected("Disconnected"));
+        assert!(!Adapter::status_connected("已断开"));
     }
 
     #[test]
     fn parse_adapter_json() {
-        // PowerShell Select-Object 输出的属性名首字母大写
-        let json = r#"{"Name":"WLAN","Status":"已连接","ifIndex":12}"#;
-        let a: Adapter = serde_json::from_str(json).unwrap();
+        // PowerShell Select-Object 输出的属性名首字母大写；pwsh 7 状态为 Up/Disconnected
+        let json = r#"{"Name":"WLAN","Status":"Up","ifIndex":12}"#;
+        let raw: RawAdapter = serde_json::from_str(json).unwrap();
+        let a = Adapter::from_raw(raw);
         assert_eq!(a.name, "WLAN");
         assert_eq!(a.if_index, 12);
-        assert!(a.is_connected());
+        assert!(a.connected);
+
+        let json = r#"{"Name":"以太网","Status":"Disconnected","ifIndex":19}"#;
+        let raw: RawAdapter = serde_json::from_str(json).unwrap();
+        let a = Adapter::from_raw(raw);
+        assert!(!a.connected);
     }
 }

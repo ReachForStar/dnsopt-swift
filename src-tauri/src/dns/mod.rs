@@ -2,7 +2,7 @@
 use hickory_resolver::config::{LookupIpStrategy, NameServerConfig, ResolverConfig, ResolverOpts};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use hickory_resolver::TokioResolver;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// 测试域名（尾部点号表示 FQDN，避免附加搜索域导致多轮查询）
@@ -14,7 +14,7 @@ const SAMPLES: usize = 3;
 /// 单次查询超时：需大于常见公网 DNS 的 RTT，慢但可达的服务器不应被误判为失败
 const QUERY_TIMEOUT: Duration = Duration::from_millis(1500);
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestResult {
     pub server: String,

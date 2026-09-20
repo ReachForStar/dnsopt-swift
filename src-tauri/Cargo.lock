@@ -719,6 +719,7 @@ name = "dns-test-tool"
 version = "3.0.0"
 dependencies = [
  "base64 0.22.1",
+ "embed-resource",
  "hickory-resolver",
  "serde",
  "serde_json",

@@ -39,7 +39,7 @@ function setStatus(msg, cls) {
 function setBusy(state) {
   busy = state;
   progress.classList.toggle("hidden", !state);
-  ["btn-test", "btn-apply-optimal", "btn-apply-selected", "btn-restore", "btn-flush"].forEach(
+  ["btn-test", "btn-apply-selected", "btn-restore", "btn-flush"].forEach(
     (id) => ($(id).disabled = state)
   );
 }
@@ -71,7 +71,7 @@ function parseInput() {
 async function loadAdapters(keepName) {
   setStatus("正在加载网络接口…", "busy");
   try {
-    adapters = await DnsTauri.invoke("list_adapters");
+    adapters = await DnsTauri.invoke("listAdapters");
   } catch (e) {
     setStatus("加载网络接口失败: " + e, "err");
     alert("加载网络接口失败:\n" + e);
@@ -81,7 +81,7 @@ async function loadAdapters(keepName) {
   for (const a of adapters) {
     const opt = document.createElement("option");
     opt.value = a.ifIndex;
-    opt.textContent = a.name + (a.status.includes("已连接") || a.status.includes("Connected") ? " (已连接)" : " (未连接)");
+    opt.textContent = a.name + (a.connected ? " (已连接)" : " (未连接)");
     adapterSelect.appendChild(opt);
   }
   if (keepName) {
@@ -185,18 +185,16 @@ async function runTest() {
     return;
   }
 
-  $("btn-apply-optimal").disabled = true;
   setBusy(true);
   setStatus("正在并行测试 " + valid.length + " 个 DNS 服务器…", "busy");
   const started = Date.now();
 
   try {
-    results = await DnsTauri.invoke("test_dns", { servers: valid });
+    results = await DnsTauri.invoke("testDns", { servers: valid });
     renderResults();
     const ok = results.filter((r) => r.success);
     const secs = ((Date.now() - started) / 1000).toFixed(1);
     if (ok.length > 0) {
-      $("btn-apply-optimal").disabled = false;
       setStatus("测试完成（" + secs + "s）- 最快 DNS: " + ok[0].server + " (" + ok[0].latencyMs + "ms)", "ok");
     } else {
       setStatus("测试完成（" + secs + "s）- 没有可用的 DNS 服务器", "err");
@@ -228,7 +226,7 @@ async function applyDns(primary, secondary, title) {
   setBusy(true);
   setStatus("正在应用 DNS 设置（等待管理员确认）…", "busy");
   try {
-    const msg2 = await DnsTauri.invoke("apply_dns", {
+    const msg2 = await DnsTauri.invoke("applyDns", {
       ifIndex: adapter.ifIndex,
       primary,
       secondary: secondary || null,
@@ -241,16 +239,6 @@ async function applyDns(primary, secondary, title) {
   } finally {
     setBusy(false);
   }
-}
-
-function applyOptimal() {
-  const ok = results.filter((r) => r.success);
-  if (ok.length === 0) {
-    alert("没有可用的 DNS 服务器可以应用，请先测试");
-    return;
-  }
-  const secondary = ok.length > 1 ? ok[1].server : null;
-  applyDns(ok[0].server, secondary, "将最优 DNS 应用到所选网络接口");
 }
 
 function applySelected() {
@@ -272,7 +260,7 @@ async function restoreAuto() {
   setBusy(true);
   setStatus("正在恢复自动 DNS 设置（等待管理员确认）…", "busy");
   try {
-    await DnsTauri.invoke("reset_dns", { ifIndex: adapter.ifIndex });
+    await DnsTauri.invoke("resetDns", { ifIndex: adapter.ifIndex });
     setStatus("已恢复 \"" + adapter.name + "\" 为自动获取 DNS", "ok");
     alert("已成功恢复为自动获取 DNS 设置");
   } catch (e) {
@@ -289,7 +277,7 @@ async function flushCache() {
   setBusy(true);
   setStatus("正在刷新 DNS 缓存…", "busy");
   try {
-    await DnsTauri.invoke("flush_cache");
+    await DnsTauri.invoke("flushCache");
     setStatus("DNS 缓存已成功刷新", "ok");
   } catch (e) {
     setStatus("DNS 缓存刷新失败: " + e, "err");
@@ -310,7 +298,7 @@ async function importDns() {
       },
     });
     if (!path) return;
-    const text = await DnsTauri.invoke("import_dns", { path });
+    const text = await DnsTauri.invoke("importDns", { path });
     input.value = text;
     setStatus("已导入 DNS 配置: " + path.split(/[\\/]/).pop(), "ok");
   } catch (e) {
@@ -333,7 +321,7 @@ async function exportDns() {
       },
     });
     if (!path) return;
-    await DnsTauri.invoke("export_dns", { path, content });
+    await DnsTauri.invoke("exportDns", { path, content });
     setStatus("已导出 DNS 配置: " + path.split(/[\\/]/).pop(), "ok");
   } catch (e) {
     alert("导出失败:\n" + e);
@@ -346,7 +334,6 @@ document.addEventListener("DOMContentLoaded", () => {
   input.value = COMMON_DNS.join("\n");
 
   $("btn-test").addEventListener("click", runTest);
-  $("btn-apply-optimal").addEventListener("click", applyOptimal);
   $("btn-apply-selected").addEventListener("click", applySelected);
   $("btn-restore").addEventListener("click", restoreAuto);
   $("btn-flush").addEventListener("click", flushCache);
