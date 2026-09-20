@@ -475,9 +475,12 @@ async function generateReport() {
       })) : null,
     });
     const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-    const path = await DnsTauri.dialog.save({
-      defaultPath: `dns-diagnose-${stamp}.txt`,
-      filters: [{ name: "文本", extensions: ["txt"] }],
+    const path = await DnsTauri.invoke("plugin:dialog|save", {
+      options: {
+        title: "保存诊断报告",
+        defaultPath: `dns-diagnose-${stamp}.txt`,
+        filters: [{ name: "文本", extensions: ["txt"] }],
+      },
     });
     if (!path) {
       setStatus("已取消保存", "info");
