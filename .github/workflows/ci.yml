@@ -12,7 +12,11 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-action@stable
+      - uses: dtolnay/rust-toolchain@stable
+      # 首次构建 tauri + hickory 约 10 分钟，缓存后 2 分钟内
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - name: Run tests
         working-directory: src-tauri
         run: cargo test
