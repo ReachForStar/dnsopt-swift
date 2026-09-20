@@ -27,3 +27,14 @@ jobs:
           releaseName: DNS延迟测试工具 ${{ github.ref_name }}
           releaseDraft: false
           prerelease: false
+          releaseBody: |
+            ## 安装
+
+            下载下方的 `*-setup.exe`（NSIS 安装包）双击安装；要求 Windows 10/11（WebView2 系统自带）。
+            也可以从源码构建独立绿色版 exe，见 README 的「构建」。
+
+            ## 说明
+
+            - 无参数启动图形界面；带参数进入 CLI（`dns-test-tool.exe help`）
+            - 功能与使用说明：[README](https://github.com/ReachForStar/dnsopt-swift#readme)
+            - 变更记录：[docs/wiki/log.md](https://github.com/ReachForStar/dnsopt-swift/blob/main/docs/wiki/log.md)

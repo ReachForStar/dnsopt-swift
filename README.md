@@ -10,7 +10,8 @@ DNS 查询由 [hickory-resolver](https://crates.io/crates/hickory-resolver) 直�
 
 ## ⬇️ 下载安装
 
-从 [Releases](https://github.com/ReachForStar/dnsopt-swift/releases) 下载最新的 NSIS 安装包 `DNS延迟测试工具_x.y.z_x64-setup.exe`（当前版本 **v3.0.0**），双击安装即可。
+从 [Releases](https://github.com/ReachForStar/dnsopt-swift/releases) 下载最新的 NSIS 安装包（v3.0.0 的文件名为 `DNS._3.0.0_x64-setup.exe`），双击安装即可。
+产品名是中文，打包器生成文件名时只保留其中的 ASCII 字符，因此下载页显示的资产名形如 `DNS._<版本>_x64-setup.exe`，不影响安装与显示名称。
 
 也可以不使用安装包，直接从源码构建独立的绿色版 exe（见下文「构建」）。
 
