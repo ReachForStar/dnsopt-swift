@@ -158,6 +158,48 @@ fn diagnose_command() {
     assert!(report.contains("DNS 解析缓存"));
 }
 
+/// diagnose 带测试结果：前端直接透传 testDns 结果，报告须包含每台服务器
+/// 回归：前端曾手写字段映射漏掉 jitterMs/lossRate，导致 "missing field jitterMs"
+#[test]
+fn diagnose_with_results() {
+    let app = test_app();
+    let webview = make_webview(&app);
+
+    let body = invoke(
+        &webview,
+        "testDns",
+        serde_json::json!({ "servers": ["223.5.5.5"], "rounds": 1 }),
+    )
+    .expect("testDns 应成功");
+    let results: Vec<dns::TestResult> = body.deserialize().unwrap();
+    let payload = serde_json::to_value(&results).expect("结果应可序列化");
+
+    let body = invoke(&webview, "diagnose", serde_json::json!({ "results": payload }))
+        .expect("diagnose 带完整结果应成功");
+    let report: String = body.deserialize().unwrap();
+    assert!(report.contains("测试结果"));
+    assert!(report.contains("223.5.5.5"));
+
+    // 只有 server 的极简结果也应可解析（统计字段缺失按 0 处理）
+    let body = invoke(
+        &webview,
+        "diagnose",
+        serde_json::json!({ "results": [{ "server": "1.1.1.1" }] }),
+    )
+    .expect("缺失统计字段不应导致报告失败");
+    let report: String = body.deserialize().unwrap();
+    assert!(report.contains("1.1.1.1"));
+
+    // 缺 server 必须报错，不能静默丢弃
+    let err = invoke(
+        &webview,
+        "diagnose",
+        serde_json::json!({ "results": [{ "latencyMs": 10 }] }),
+    )
+    .expect_err("缺 server 应失败");
+    assert!(err.to_string().contains("server"), "实际错误: {err}");
+}
+
 /// testDns 多域名：domains 参数生效，结果服务器数与输入一致
 #[test]
 fn test_dns_with_domains() {

@@ -462,17 +462,10 @@ async function generateReport() {
   setBusy(true);
   setStatus("正在生成诊断报告…", "busy");
   try {
-    // 有近期测试结果时一并写入报告
+    // 有近期测试结果时一并写入报告（直接透传 testDns 结果，勿手写字段映射：
+    // 漏字段会让 Rust 侧反序列化失败，报告生成整体报错）
     const report = await DnsTauri.invoke("diagnose", {
-      results: results.length ? results.map((r) => ({
-        server: r.server,
-        latencyMs: r.latencyMs,
-        latencyMin: r.latencyMin,
-        latencyMax: r.latencyMax,
-        success: r.success,
-        error: r.error,
-        suspect: r.suspect,
-      })) : null,
+      results: results.length ? results : null,
     });
     const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
     const path = await DnsTauri.invoke("plugin:dialog|save", {

@@ -21,22 +21,30 @@ pub const MAX_DOMAINS: usize = 10;
 /// 单次查询超时：需大于常见公网 DNS 的 RTT，慢但可达的服务器不应被误判为失败
 const QUERY_TIMEOUT: Duration = Duration::from_millis(1500);
 
+// 反序列化入口只有前端回传（diagnose 报告），缺失的统计字段按 0 处理，
+// 避免前端字段映射不全时整个报告生成失败；序列化字段名仍是 camelCase
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestResult {
     pub server: String,
     /// 平均延迟（毫秒）
+    #[serde(default)]
     pub latency_ms: u64,
     /// 最小/最大采样延迟（失败时为 0）
+    #[serde(default)]
     pub latency_min: u64,
+    #[serde(default)]
     pub latency_max: u64,
+    #[serde(default)]
     pub success: bool,
     pub error: Option<String>,
     /// 疑似污染/劫持原因（None = 正常）
     pub suspect: Option<String>,
     /// 延迟抖动（采样标准差，毫秒；失败时为 0）
+    #[serde(default)]
     pub jitter_ms: u64,
     /// 丢包率 = 失败轮数 / 总采样次数（0.0–1.0）
+    #[serde(default)]
     pub loss_rate: f64,
     /// 各域名应答记录集合（仅内部用于逐域名多数对比，不序列化给前端）
     #[serde(skip)]
