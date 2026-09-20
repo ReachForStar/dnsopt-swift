@@ -34,6 +34,10 @@ pub struct TestResult {
     pub error: Option<String>,
     /// 疑似污染/劫持原因（None = 正常）
     pub suspect: Option<String>,
+    /// 延迟抖动（采样标准差，毫秒；失败时为 0）
+    pub jitter_ms: u64,
+    /// 丢包率 = 失败轮数 / 总采样次数（0.0–1.0）
+    pub loss_rate: f64,
     /// 各域名应答记录集合（仅内部用于逐域名多数对比，不序列化给前端）
     #[serde(skip)]
     pub answers: BTreeMap<String, Vec<String>>,
@@ -72,11 +76,21 @@ struct QueryOutcome {
     latency_ms: u64,
     /// 实际应答源 IP（DoH 通道无法获取，为 None）
     source_ip: Option<IpAddr>,
-    /// 应答中的 A 记录值（用于多数对比）
+    /// 应答记录值（字符串，用于多数对比与展示）
     answers: Vec<String>,
 }
 
-/// 校验并规范化域名列表（1..=MAX_DOMAINS 个，自动补尾部点号成 FQDN）
+/// 解析查询类型（A/AAAA/MX，大小写不敏感）
+pub fn parse_query_type(s: &str) -> Result<RecordType, String> {
+    match s.trim().to_ascii_uppercase().as_str() {
+        "A" => Ok(RecordType::A),
+        "AAAA" => Ok(RecordType::AAAA),
+        "MX" => Ok(RecordType::MX),
+        other => Err(format!("不支持的查询类型: {other}（支持 A/AAAA/MX）")),
+    }
+}
+
+/// 校验域名列表（1..=MAX_DOMAINS 个，自动补尾部点号成 FQDN）
 pub fn parse_domains(input: &[String]) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     for raw in input {
@@ -122,8 +136,8 @@ fn parse_server(s: &str) -> Result<String, String> {
     Err(format!("不支持的服务器地址（仅支持 IPv4 或 https DoH URL）: {t}"))
 }
 
-/// UDP 直发一次 A 记录查询（可拿到应答源地址，用于劫持检测）
-async fn query_udp(server_ip: &IpAddr, domain: &str) -> Result<QueryOutcome, String> {
+/// UDP 直发一次 DNS 查询（可拿到应答源地址，用于劫持检测）
+async fn query_udp(server_ip: &IpAddr, domain: &str, qtype: RecordType) -> Result<QueryOutcome, String> {
     let name = Name::from_ascii(domain).map_err(|e| format!("域名构造失败: {e}"))?;
     let id = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -131,7 +145,7 @@ async fn query_udp(server_ip: &IpAddr, domain: &str) -> Result<QueryOutcome, Str
         .unwrap_or(0);
     let mut message = Message::new(id, MessageType::Query, OpCode::Query);
     message.metadata.recursion_desired = true;
-    message.queries.push(Query::query(name, RecordType::A));
+    message.queries.push(Query::query(name, qtype));
     let payload = message.to_vec().map_err(|e| format!("查询序列化失败: {e}"))?;
 
     let sock = tokio::net::UdpSocket::bind("0.0.0.0:0")
@@ -156,13 +170,16 @@ async fn query_udp(server_ip: &IpAddr, domain: &str) -> Result<QueryOutcome, Str
     let answers: Vec<String> = response
         .answers
         .iter()
-        .filter_map(|r| match &r.data {
-            RData::A(a) => Some(a.0.to_string()),
+        .filter_map(|r| match (&r.data, qtype) {
+            (RData::A(_), RecordType::A) | (RData::AAAA(_), RecordType::AAAA) => {
+                Some(r.data.to_string())
+            }
+            (RData::MX(_), RecordType::MX) => Some(r.data.to_string()),
             _ => None,
         })
         .collect();
     if answers.is_empty() {
-        return Err("响应中没有地址记录".into());
+        return Err(format!("响应中没有 {qtype:?} 记录"));
     }
     Ok(QueryOutcome {
         latency_ms,
@@ -171,8 +188,8 @@ async fn query_udp(server_ip: &IpAddr, domain: &str) -> Result<QueryOutcome, Str
     })
 }
 
-/// DoH 通道一次 A 记录查询（HTTPS 加密，无法校验应答源）
-async fn query_doh(url: &str, domain: &str) -> Result<QueryOutcome, String> {
+/// DoH 通道一次 DNS 查询（HTTPS 加密，无法校验应答源）
+async fn query_doh(url: &str, domain: &str, qtype: RecordType) -> Result<QueryOutcome, String> {
     let parsed = url::Url::parse(url).map_err(|e| format!("DoH URL 无效: {e}"))?;
     let host = parsed
         .host_str()
@@ -192,7 +209,11 @@ async fn query_doh(url: &str, domain: &str) -> Result<QueryOutcome, String> {
     let mut opts = ResolverOpts::default();
     opts.timeout = QUERY_TIMEOUT;
     opts.attempts = 0; // 不重试：延迟测试要的是单次往返
-    opts.ip_strategy = LookupIpStrategy::Ipv4Only;
+    match qtype {
+        RecordType::A => opts.ip_strategy = LookupIpStrategy::Ipv4Only,
+        RecordType::AAAA => opts.ip_strategy = LookupIpStrategy::Ipv6Only,
+        _ => opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6,
+    }
 
     let resolver = TokioResolver::builder_with_config(config, TokioRuntimeProvider::default())
         .with_options(opts)
@@ -200,14 +221,25 @@ async fn query_doh(url: &str, domain: &str) -> Result<QueryOutcome, String> {
         .map_err(|e| format!("创建解析器失败: {e}"))?;
 
     let start = Instant::now();
-    let lookup = resolver
-        .lookup_ip(domain)
-        .await
-        .map_err(|e| e.to_string())?;
-    let latency_ms = start.elapsed().as_millis() as u64;
-    let answers: Vec<String> = lookup.iter().map(|ip| ip.to_string()).collect();
+    let (latency_ms, answers): (u64, Vec<String>) = if matches!(qtype, RecordType::A | RecordType::AAAA) {
+        let lookup = resolver
+            .lookup_ip(domain)
+            .await
+            .map_err(|e| e.to_string())?;
+        (start.elapsed().as_millis() as u64, lookup.iter().map(|ip| ip.to_string()).collect())
+    } else {
+        // MX 等类型用通用 lookup（lookup_ip 只返回 A/AAAA）
+        let lookup = resolver
+            .lookup(domain, qtype)
+            .await
+            .map_err(|e| e.to_string())?;
+        (
+            start.elapsed().as_millis() as u64,
+            lookup.answers().iter().map(|r| r.data.to_string()).collect(),
+        )
+    };
     if answers.is_empty() {
-        return Err("响应中没有地址记录".into());
+        return Err(format!("响应中没有 {qtype:?} 记录"));
     }
     Ok(QueryOutcome {
         latency_ms,
@@ -217,19 +249,24 @@ async fn query_doh(url: &str, domain: &str) -> Result<QueryOutcome, String> {
 }
 
 /// 按服务器类型分派一次查询
-async fn query_once(server: &str, domain: &str) -> Result<QueryOutcome, String> {
+async fn query_once(server: &str, domain: &str, qtype: RecordType) -> Result<QueryOutcome, String> {
     let t = server.trim();
     if let Ok(ip) = t.parse::<IpAddr>() {
-        query_udp(&ip, domain).await
+        query_udp(&ip, domain, qtype).await
     } else {
-        query_doh(t, domain).await
+        query_doh(t, domain, qtype).await
     }
 }
 
 /// 测试单个 DNS 服务器：对每个域名采样 rounds 次，至少一个域名成功才算成功；
 /// 服务器延迟取各成功域名的最小值（最快域名最能代表服务器能力，
 /// 个别域名慢可能是其权威链路问题而非服务器问题）
-pub async fn test_single(server: &str, rounds: usize, domains: &[String]) -> TestResult {
+pub async fn test_single(
+    server: &str,
+    rounds: usize,
+    domains: &[String],
+    qtype: RecordType,
+) -> TestResult {
     let server = match parse_server(server) {
         Ok(s) => s,
         Err(e) => {
@@ -241,11 +278,14 @@ pub async fn test_single(server: &str, rounds: usize, domains: &[String]) -> Tes
                 success: false,
                 error: Some(e),
                 suspect: None,
+                jitter_ms: 0,
+                loss_rate: 1.0,
                 answers: BTreeMap::new(),
             };
         }
     };
 
+    let total = rounds * domains.len();
     let mut latencies: Vec<u64> = Vec::new();
     let mut last_error: Option<String> = None;
     let mut source_ip: Option<IpAddr> = None;
@@ -254,7 +294,7 @@ pub async fn test_single(server: &str, rounds: usize, domains: &[String]) -> Tes
     for domain in domains {
         let mut domain_ok_round = 0usize;
         for _ in 0..rounds {
-            match query_once(&server, domain).await {
+            match query_once(&server, domain, qtype).await {
                 Ok(o) => {
                     latencies.push(o.latency_ms);
                     source_ip = o.source_ip;
@@ -276,11 +316,26 @@ pub async fn test_single(server: &str, rounds: usize, domains: &[String]) -> Tes
             success: false,
             error: Some(last_error.unwrap_or_else(|| "DNS 查询失败".into())),
             suspect: None,
+            jitter_ms: 0,
+            loss_rate: 1.0,
             answers,
         };
     }
 
     let avg = latencies.iter().sum::<u64>() / latencies.len() as u64;
+    // 丢包率 = 失败采样数 / 总采样数（部分域名失败也计入，反映整体可用性）
+    let loss_rate = (total - latencies.len()) as f64 / total as f64;
+    // 抖动 = 采样延迟的样本标准差
+    let mean = latencies.iter().map(|x| *x as f64).sum::<f64>() / latencies.len() as f64;
+    let jitter_ms = (latencies
+        .iter()
+        .map(|x| {
+            let d = *x as f64 - mean;
+            d * d
+        })
+        .sum::<f64>()
+        / latencies.len() as f64)
+        .sqrt() as u64;
     // UDP 通道应答源与服务器不一致 → 基本可判定劫持（响应被中间节点伪造/代发）
     let hijack = match &source_ip {
         Some(src) => {
@@ -302,6 +357,8 @@ pub async fn test_single(server: &str, rounds: usize, domains: &[String]) -> Tes
         success: true,
         error: None,
         suspect: hijack,
+        jitter_ms,
+        loss_rate,
         answers,
     }
 }
@@ -324,6 +381,7 @@ pub async fn test_multiple(
     servers: &[String],
     rounds: usize,
     domains: &[String],
+    qtype: RecordType,
 ) -> Result<Vec<TestResult>, String> {
     if servers.is_empty() {
         return Err("没有要测试的 DNS 服务器".into());
@@ -334,7 +392,7 @@ pub async fn test_multiple(
     for s in servers {
         let server = s.clone();
         let domains = domains.to_vec();
-        handles.push(tokio::spawn(async move { test_single(&server, rounds, &domains).await }));
+        handles.push(tokio::spawn(async move { test_single(&server, rounds, &domains, qtype).await }));
     }
 
     let mut results = Vec::with_capacity(handles.len());
@@ -349,6 +407,8 @@ pub async fn test_multiple(
                 success: false,
                 error: Some(format!("任务异常: {e}")),
                 suspect: None,
+                jitter_ms: 0,
+                loss_rate: 1.0,
                 answers: BTreeMap::new(),
             }),
         }
@@ -426,6 +486,8 @@ mod tests {
             success,
             error: None,
             suspect: None,
+            jitter_ms: 0,
+            loss_rate: 0.0,
             answers: map,
         }
     }
@@ -486,6 +548,16 @@ mod tests {
     }
 
     #[test]
+    fn query_type_validation() {
+        use hickory_proto::rr::RecordType;
+        assert_eq!(parse_query_type("a").unwrap(), RecordType::A);
+        assert_eq!(parse_query_type("AAAA").unwrap(), RecordType::AAAA);
+        assert_eq!(parse_query_type(" mx ").unwrap(), RecordType::MX);
+        assert!(parse_query_type("TXT").is_err());
+        assert!(parse_query_type("").is_err());
+    }
+
+    #[test]
     fn domain_validation() {
         assert_eq!(
             parse_domains(&["www.baidu.com".into()]).unwrap(),
@@ -531,6 +603,6 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_empty_input() {
         let domains = parse_domains(&["www.baidu.com".into()]).unwrap();
-        assert!(test_multiple(&[], DEFAULT_ROUNDS, &domains).await.is_err());
+        assert!(test_multiple(&[], DEFAULT_ROUNDS, &domains, RecordType::A).await.is_err());
     }
 }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DNS延迟测试工具</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260921g" />
 </head>
 <body>
   <div class="app">
@@ -16,6 +16,7 @@
         <button id="btn-adapter-dns" class="btn btn-ghost" title="查看所选接口当前配置的 DNS 服务器">查看DNS</button>
       </div>
       <div class="top-right">
+        <span class="hint version-tag">v3.1.0</span>
         <button id="btn-test" class="btn btn-primary">开始测试</button>
       </div>
     </header>
@@ -43,6 +44,13 @@
               <option value="20">20</option>
             </select>
           </label>
+          <label class="rounds-label">查询类型
+            <select id="qtype-select" title="A：IPv4 地址；AAAA：IPv6 地址；MX：邮箱服务器">
+              <option value="A" selected>A</option>
+              <option value="AAAA">AAAA</option>
+              <option value="MX">MX</option>
+            </select>
+          </label>
           <label class="rounds-label">测试域名
             <input id="domain-input" type="text" value="www.baidu.com" spellcheck="false" placeholder="逗号分隔，最多 10 个" />
           </label>
@@ -53,30 +61,15 @@
         <div class="card-head">
           <h2>测试结果</h2>
           <span class="hint" id="result-summary"></span>
+          <button id="btn-monitor" class="btn btn-sm btn-ghost">监控</button>
         </div>
         <div class="table-wrap">
           <table id="result-table">
             <thead>
-              <tr><th>DNS服务器</th><th>延迟 min/avg/max (ms)</th><th>状态</th></tr>
+              <tr><th>DNS服务器</th><th>延迟 min/avg/max (ms)</th><th>抖动(ms)</th><th>丢包</th><th>状态</th></tr>
             </thead>
             <tbody></tbody>
           </table>
-        </div>
-        <div class="toolbar monitor-bar">
-          <label class="rounds-label">监控间隔
-            <select id="monitor-interval">
-              <option value="5000">5秒</option>
-              <option value="10000" selected>10秒</option>
-              <option value="30000">30秒</option>
-              <option value="60000">1分钟</option>
-              <option value="300000">5分钟</option>
-            </select>
-          </label>
-          <button id="btn-monitor" class="btn btn-sm btn-accent">开始监控</button>
-          <span class="hint" id="monitor-hint">折线为各服务器平均延迟</span>
-        </div>
-        <div class="monitor-chart-wrap" id="monitor-wrap" style="display: none">
-          <canvas id="monitor-chart" width="600" height="220"></canvas>
         </div>
       </section>
     </main>
@@ -96,7 +89,34 @@
       </div>
     </section>
 
-    <!-- 接口当前 DNS 模态框 -->
+    <!-- 延迟监控模态框（独立窗口区域，不占用测试结果表格） -->
+  <div id="monitor-modal" class="modal-overlay hidden">
+    <div class="modal monitor-modal">
+      <div class="modal-head">
+        <h3>延迟监控</h3>
+        <button id="btn-monitor-close" class="btn btn-sm btn-ghost">停止并关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="monitor-controls">
+          <label class="rounds-label">监控间隔
+            <select id="monitor-interval">
+              <option value="5000">5秒</option>
+              <option value="10000" selected>10秒</option>
+              <option value="30000">30秒</option>
+              <option value="60000">1分钟</option>
+              <option value="300000">5分钟</option>
+            </select>
+          </label>
+          <span class="hint">折线为各服务器平均延迟（每间隔采样一轮）</span>
+        </div>
+        <div class="monitor-chart-wrap">
+          <canvas id="monitor-chart" width="680" height="260"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 接口当前 DNS 模态框 -->
   <div id="dns-modal" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-head">
@@ -133,7 +153,7 @@
     </footer>
   </div>
 
-  <script src="tauri.js"></script>
-  <script src="app.js"></script>
+  <script src="tauri.js?v=20260921g"></script>
+  <script src="app.js?v=20260921g"></script>
 </body>
 </html>

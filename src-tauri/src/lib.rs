@@ -2,6 +2,8 @@ mod cli;
 pub mod dns;
 pub mod net;
 
+use tauri::Manager;
+
 pub use cli::{is_cli_mode, run as run_cli};
 
 /// 启动 Tauri GUI 应用
@@ -9,6 +11,16 @@ pub use cli::{is_cli_mode, run as run_cli};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // 本地 asset 协议响应无缓存头，WebView 磁盘缓存可能命中旧前端文件：
+            // 启动时清空浏览数据并重载，保证始终加载当前前端
+            if let Some(window) = app.get_webview_window("main") {
+                if window.clear_all_browsing_data().is_ok() {
+                    let _ = window.eval("location.reload()");
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             test_dns,
             list_adapters,
@@ -50,14 +62,19 @@ async fn test_dns(
     servers: Vec<String>,
     rounds: Option<u32>,
     domains: Option<Vec<String>>,
+    qtype: Option<String>,
 ) -> Result<Vec<dns::TestResult>, String> {
-    // 旧前端不传 rounds/domains 时保持默认（向后兼容）
+    // 旧前端不传 rounds/domains/qtype 时保持默认（向后兼容）
     let rounds = rounds.unwrap_or(dns::DEFAULT_ROUNDS as u32).clamp(1, dns::MAX_ROUNDS as u32);
     let domains = match domains {
         Some(d) if !d.is_empty() => dns::parse_domains(&d)?,
         _ => vec![dns::TEST_DOMAIN.to_string()],
     };
-    dns::test_multiple(&servers, rounds as usize, &domains).await
+    let qtype = match qtype {
+        Some(t) if !t.trim().is_empty() => dns::parse_query_type(&t)?,
+        _ => hickory_proto::rr::RecordType::A,
+    };
+    dns::test_multiple(&servers, rounds as usize, &domains, qtype).await
 }
 
 #[tauri::command(rename = "listAdapters")]

@@ -313,12 +313,37 @@ select:focus { border-color: var(--primary); }
   border: 1px solid #f0d48a;
 }
 
-/* 域名输入与监控区 */
-.domain-input,
+/* 版本号标记与监控模态框 */
+.version-tag {
+  margin-right: 8px;
+  align-self: center;
+}
+.monitor-modal {
+  width: min(760px, 92vw);
+}
+.monitor-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.monitor-chart-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--bg);
+}
+#monitor-chart {
+  width: 100%;
+  height: 260px;
+  display: block;
+}
+
+/* 域名输入与左卡参数行 */
 #domain-input {
-  width: 150px;
-  min-width: 80px;
-  flex: 0 1 auto; /* 窄窗口下收缩而非撑破行 */
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 40px;
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -326,30 +351,19 @@ select:focus { border-color: var(--primary); }
   color: var(--text);
   font-size: 13px;
 }
-/* 左卡第二行：测试参数（与按钮行分开；nowrap 强制单行，窄窗口下输入框收缩） */
+/* 测试域名标签填充剩余空间（basis 0 保证宽窗口单行），窄窗口下整单元换行 */
+.params-row .rounds-label:last-child {
+  flex: 1 1 0;
+  min-width: 100px;
+}
+/* 左卡第二行：测试参数（与按钮行分开；窄窗口下标签整单元换行，不内部拆散） */
 .params-row {
   border-top: none;
   padding-top: 0;
-  flex-wrap: nowrap;
 }
 .params-row .rounds-label {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
-}
-.monitor-bar {
-  margin-top: 10px;
-  align-items: center;
-}
-.monitor-chart-wrap {
-  margin-top: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px;
-  background: var(--bg);
-  flex-shrink: 0;
-}
-#monitor-chart {
-  width: 100%;
-  height: 220px;
-  display: block;
+  flex-wrap: nowrap; /* 文字与控件同行 */
+  white-space: nowrap;
 }

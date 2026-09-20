@@ -197,6 +197,52 @@ fn test_dns_invalid_domain() {
     assert!(msg.contains("域名"), "错误应指明域名问题: {msg}");
 }
 
+/// testDns 查询类型：AAAA 与 MX 可测，结果形态自洽
+#[test]
+fn test_dns_query_types() {
+    let app = test_app();
+    let webview = make_webview(&app);
+    for qt in ["AAAA", "MX"] {
+        let body = invoke(
+            &webview,
+            "testDns",
+            serde_json::json!({
+                "servers": ["223.5.5.5"],
+                "rounds": 1,
+                "domains": ["www.qq.com"],
+                "qtype": qt,
+            }),
+        )
+        .expect("query type 应可解析");
+        let results: Vec<dns::TestResult> = body.deserialize().unwrap();
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        if r.success {
+            assert!(r.latency_ms > 0);
+        } else {
+            assert!(r.error.is_some());
+        }
+    }
+}
+
+/// testDns 查询类型校验：不支持的类型应报错
+#[test]
+fn test_dns_invalid_query_type() {
+    let app = test_app();
+    let webview = make_webview(&app);
+    let err = invoke(
+        &webview,
+        "testDns",
+        serde_json::json!({
+            "servers": ["223.5.5.5"],
+            "rounds": 1,
+            "qtype": "TXT",
+        }),
+    )
+    .expect_err("不支持的类型应失败");
+    assert!(err.to_string().contains("查询类型"));
+}
+
 /// DoH 通道：https URL 服务器可测，结果形态自洽（网络环境决定成败）
 #[test]
 fn doh_server_contract() {

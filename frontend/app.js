@@ -164,6 +164,12 @@ function renderResults() {
       tdLat.textContent = "N/A";
     }
 
+    const tdJitter = document.createElement("td");
+    tdJitter.textContent = r.success ? String(r.jitterMs) : "N/A";
+
+    const tdLoss = document.createElement("td");
+    tdLoss.textContent = r.success ? Math.round(r.lossRate * 100) + "%" : "100%";
+
     const tdStatus = document.createElement("td");
     if (r.success) {
       const grade = r.latencyMs <= 49 ? "极佳" : r.latencyMs <= 99 ? "良好" : r.latencyMs <= 199 ? "一般" : "较慢";
@@ -193,7 +199,7 @@ function renderResults() {
       tdStatus.appendChild(err);
     }
 
-    tr.append(tdServer, tdLat, tdStatus);
+    tr.append(tdServer, tdLat, tdJitter, tdLoss, tdStatus);
     resultTbody.appendChild(tr);
 
     if (r.success) {
@@ -247,7 +253,7 @@ async function runTest() {
   const started = Date.now();
 
   try {
-    results = await DnsTauri.invoke("testDns", { servers: valid, rounds, domains });
+    results = await DnsTauri.invoke("testDns", { servers: valid, rounds, domains, qtype: $("qtype-select").value });
     renderResults();
     const ok = results.filter((r) => r.success);
     const secs = ((Date.now() - started) / 1000).toFixed(1);
@@ -359,7 +365,7 @@ function monitorTick() {
     stopMonitor();
     return;
   }
-  DnsTauri.invoke("testDns", { servers: valid, rounds: 1, domains })
+  DnsTauri.invoke("testDns", { servers: valid, rounds: 1, domains, qtype: $("qtype-select").value })
     .then((res) => {
       const values = {};
       for (const r of res) if (r.success) values[r.server] = r.latencyMs;
@@ -372,9 +378,10 @@ function monitorTick() {
 
 function startMonitor() {
   if (monitorTimer) return;
-  $("monitor-wrap").style.display = "";
-  $("btn-monitor").textContent = "停止监控";
+  $("btn-monitor").textContent = "监控中";
+  $("monitor-modal").classList.remove("hidden");
   monitorPoints = [];
+  drawMonitorChart();
   monitorTick();
   monitorTimer = setInterval(monitorTick, Number($("monitor-interval").value));
 }
@@ -383,7 +390,7 @@ function stopMonitor() {
   if (!monitorTimer) return;
   clearInterval(monitorTimer);
   monitorTimer = null;
-  $("btn-monitor").textContent = "开始监控";
+  $("btn-monitor").textContent = "监控";
 }
 
 function drawMonitorChart() {
@@ -618,6 +625,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-dns-modal-close").addEventListener("click", () => $("dns-modal").classList.add("hidden"));
   $("btn-report").addEventListener("click", generateReport);
   $("btn-monitor").addEventListener("click", () => (monitorTimer ? stopMonitor() : startMonitor()));
+  $("btn-monitor-close").addEventListener("click", () => {
+    stopMonitor();
+    $("monitor-modal").classList.add("hidden");
+  });
   $("btn-common").addEventListener("click", () => { input.value = COMMON_DNS.join("\n"); });
   $("btn-clear").addEventListener("click", () => { input.value = ""; });
   $("btn-import").addEventListener("click", importDns);

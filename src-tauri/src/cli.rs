@@ -99,8 +99,12 @@ fn run_inner(args: &[String]) -> Result<String, String> {
             };
             let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
             let domains = crate::dns::parse_domains(&[crate::dns::TEST_DOMAIN.trim_end_matches('.').to_string()])?;
-            let results =
-                runtime.block_on(crate::dns::test_multiple(&servers, crate::dns::DEFAULT_ROUNDS, &domains))?;
+            let results = runtime.block_on(crate::dns::test_multiple(
+                &servers,
+                crate::dns::DEFAULT_ROUNDS,
+                &domains,
+                hickory_proto::rr::RecordType::A,
+            ))?;
             let mut lines = vec!["DNS服务器\t延迟(ms)\t状态".to_string()];
             for r in &results {
                 let status = if r.success {
