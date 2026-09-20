@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DNS延迟测试工具</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="top-left">
+        <label for="adapter-select">网络接口:</label>
+        <select id="adapter-select" title="选择要设置 DNS 的网络接口"></select>
+        <button id="btn-refresh-adapter" class="btn btn-ghost">刷新</button>
+      </div>
+      <div class="top-right">
+        <button id="btn-test" class="btn btn-primary">开始测试</button>
+        <button id="btn-apply-optimal" class="btn btn-accent" disabled>应用最优DNS</button>
+      </div>
+    </header>
+
+    <main class="split">
+      <section class="card">
+        <div class="card-head">
+          <h2>DNS服务器配置</h2>
+          <span class="hint">每行输入一个DNS地址，# 开头为注释</span>
+        </div>
+        <textarea id="dns-input" spellcheck="false"></textarea>
+        <div class="toolbar">
+          <button id="btn-common" class="btn btn-sm btn-accent">加载常用</button>
+          <button id="btn-clear" class="btn btn-sm btn-danger">清空</button>
+          <button id="btn-import" class="btn btn-sm btn-ghost">导入</button>
+          <button id="btn-export" class="btn btn-sm btn-ghost">导出</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>测试结果</h2>
+          <span class="hint" id="result-summary"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="result-table">
+            <thead>
+              <tr><th>DNS服务器</th><th>延迟 (ms)</th><th>状态</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <section class="card settings">
+      <h2>DNS设置</h2>
+      <div class="settings-grid">
+        <label>首选DNS <select id="primary-select"></select></label>
+        <label>辅助DNS <select id="secondary-select"></select></label>
+      </div>
+      <div class="toolbar">
+        <button id="btn-apply-selected" class="btn btn-accent">应用选定DNS</button>
+        <button id="btn-restore" class="btn btn-ghost">恢复自动DNS</button>
+        <button id="btn-flush" class="btn btn-warn">刷新DNS缓存</button>
+      </div>
+    </section>
+
+    <footer class="statusbar">
+      <span id="status-text">就绪</span>
+      <div id="progress" class="progress hidden"><div class="bar"></div></div>
+    </footer>
+  </div>
+
+  <script src="tauri.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

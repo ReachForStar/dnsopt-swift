@@ -1,0 +1,25 @@
+[package]
+name = "dns-test-tool"
+version = "3.0.0"
+description = "DNS服务器延迟批量测试与一键设置工具（Rust/Tauri 版）"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hickory-resolver = "0.26"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console"] }
+
+[profile.release]
+strip = true
+lto = "thin"
