@@ -197,11 +197,11 @@ function renderResults() {
     }
   }
 
-  // 自动选择最快的两个（主副不同时）
-  const ok = results.filter((r) => r.success);
-  if (ok.length > 0) {
-    primarySelect.value = ok[0].server;
-    if (ok.length > 1) secondarySelect.value = ok[1].server;
+  // 自动选择主/副：只从「极佳（≤49ms）且无可疑标记」中按最快顺序选，避免把被污染/劫持的 DNS 自动应用
+  const eligible = results.filter((r) => r.success && !r.suspect && r.latencyMs <= 49);
+  if (eligible.length > 0) {
+    primarySelect.value = eligible[0].server;
+    if (eligible.length > 1) secondarySelect.value = eligible[1].server;
   }
 
   const okCount = ok.length;
