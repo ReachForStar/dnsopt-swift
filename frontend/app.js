@@ -14,6 +14,10 @@ const COMMON_DNS = [
   "1.1.1.1", "1.0.0.1",            // Cloudflare
   "208.67.222.222", "208.67.220.220", // OpenDNS
   "9.9.9.9", "149.112.112.112",    // Quad9
+  // 区域运营商（电信/Chinanet，用户提供）
+  "111.170.166.6", "113.96.17.165", "183.2.141.97",
+  "61.151.230.52", "14.215.166.64", "221.231.139.97",
+  "14.215.166.106", "183.2.141.242",
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -124,7 +128,23 @@ function renderResults() {
 
     const tdLat = document.createElement("td");
     tdLat.className = "latency";
-    tdLat.textContent = r.success ? String(r.latencyMs) : "N/A";
+    if (r.success) {
+      // 条形图宽度按本轮最大延迟归一，颜色随等级
+      const maxLat = Math.max(...results.filter((x) => x.success).map((x) => x.latencyMax), 1);
+      const bar = document.createElement("div");
+      bar.className = "latency-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "latency-bar";
+      fill.style.width = Math.max(2, (r.latencyMax / maxLat) * 100) + "%";
+      bar.appendChild(fill);
+      tdLat.appendChild(bar);
+      const txt = document.createElement("span");
+      txt.className = "latency-text";
+      txt.textContent = r.latencyMin + " / " + r.latencyMs + " / " + r.latencyMax;
+      tdLat.appendChild(txt);
+    } else {
+      tdLat.textContent = "N/A";
+    }
 
     const tdStatus = document.createElement("td");
     if (r.success) {
@@ -186,11 +206,12 @@ async function runTest() {
   }
 
   setBusy(true);
-  setStatus("正在并行测试 " + valid.length + " 个 DNS 服务器…", "busy");
+  const rounds = Number($("rounds-select").value);
+  setStatus("正在并行测试 " + valid.length + " 个 DNS 服务器（每服务器 " + rounds + " 轮）…", "busy");
   const started = Date.now();
 
   try {
-    results = await DnsTauri.invoke("testDns", { servers: valid });
+    results = await DnsTauri.invoke("testDns", { servers: valid, rounds });
     renderResults();
     const ok = results.filter((r) => r.success);
     const secs = ((Date.now() - started) / 1000).toFixed(1);
@@ -287,6 +308,43 @@ async function flushCache() {
   }
 }
 
+// ---------- 查看缓存 ----------
+
+async function showCache() {
+  setBusy(true);
+  setStatus("正在读取 DNS 解析缓存…", "busy");
+  try {
+    const entries = await DnsTauri.invoke("getDnsCache");
+    const tbody = document.querySelector("#cache-table tbody");
+    tbody.innerHTML = "";
+    if (!entries.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 2;
+      td.textContent = "缓存为空";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      for (const e of entries) {
+        const tr = document.createElement("tr");
+        const tdName = document.createElement("td");
+        tdName.textContent = e.name;
+        const tdAddr = document.createElement("td");
+        tdAddr.textContent = e.address;
+        tr.append(tdName, tdAddr);
+        tbody.appendChild(tr);
+      }
+    }
+    $("cache-modal").classList.remove("hidden");
+    setStatus("已读取 " + entries.length + " 条缓存记录", "ok");
+  } catch (e) {
+    setStatus("读取缓存失败: " + e, "err");
+    alert("读取缓存失败:\n" + e);
+  } finally {
+    setBusy(false);
+  }
+}
+
 // ---------- 导入 / 导出 ----------
 
 async function importDns() {
@@ -337,6 +395,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-apply-selected").addEventListener("click", applySelected);
   $("btn-restore").addEventListener("click", restoreAuto);
   $("btn-flush").addEventListener("click", flushCache);
+  $("btn-cache").addEventListener("click", showCache);
+  $("btn-cache-close").addEventListener("click", () => $("cache-modal").classList.add("hidden"));
   $("btn-common").addEventListener("click", () => { input.value = COMMON_DNS.join("\n"); });
   $("btn-clear").addEventListener("click", () => { input.value = ""; });
   $("btn-import").addEventListener("click", importDns);

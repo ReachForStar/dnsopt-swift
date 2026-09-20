@@ -8,8 +8,9 @@ use std::time::{Duration, Instant};
 /// 测试域名（尾部点号表示 FQDN，避免附加搜索域导致多轮查询）
 pub const TEST_DOMAIN: &str = "www.baidu.com.";
 
-/// 每个 DNS 服务器采样次数，取平均值
-const SAMPLES: usize = 3;
+/// 默认采样轮数与上限（每轮 = 每服务器各查一次）
+pub const DEFAULT_ROUNDS: usize = 3;
+pub const MAX_ROUNDS: usize = 50;
 
 /// 单次查询超时：需大于常见公网 DNS 的 RTT，慢但可达的服务器不应被误判为失败
 const QUERY_TIMEOUT: Duration = Duration::from_millis(1500);
@@ -18,7 +19,11 @@ const QUERY_TIMEOUT: Duration = Duration::from_millis(1500);
 #[serde(rename_all = "camelCase")]
 pub struct TestResult {
     pub server: String,
+    /// 平均延迟（毫秒）
     pub latency_ms: u64,
+    /// 最小/最大采样延迟（失败时为 0）
+    pub latency_min: u64,
+    pub latency_max: u64,
     pub success: bool,
     pub error: Option<String>,
 }
@@ -74,12 +79,14 @@ async fn query_once(server: &str) -> Result<u64, String> {
     Ok(start.elapsed().as_millis() as u64)
 }
 
-/// 测试单个 DNS 服务器：采样 3 次，全部失败才算失败
-pub async fn test_single(server: &str) -> TestResult {
+/// 测试单个 DNS 服务器：采样 rounds 次，至少一次成功才算成功
+pub async fn test_single(server: &str, rounds: usize) -> TestResult {
     if !is_valid_ipv4(server) {
         return TestResult {
             server: server.to_string(),
             latency_ms: 0,
+            latency_min: 0,
+            latency_max: 0,
             success: false,
             error: Some("不是有效的 IPv4 地址".into()),
         };
@@ -87,7 +94,7 @@ pub async fn test_single(server: &str) -> TestResult {
 
     let mut latencies: Vec<u64> = Vec::new();
     let mut last_error: Option<String> = None;
-    for _ in 0..SAMPLES {
+    for _ in 0..rounds {
         match query_once(server).await {
             Ok(ms) => latencies.push(ms),
             Err(e) => last_error = Some(e),
@@ -98,6 +105,8 @@ pub async fn test_single(server: &str) -> TestResult {
         TestResult {
             server: server.to_string(),
             latency_ms: 0,
+            latency_min: 0,
+            latency_max: 0,
             success: false,
             error: Some(last_error.unwrap_or_else(|| "DNS 查询失败".into())),
         }
@@ -106,6 +115,8 @@ pub async fn test_single(server: &str) -> TestResult {
         TestResult {
             server: server.to_string(),
             latency_ms: avg,
+            latency_min: latencies.iter().min().copied().unwrap_or(0),
+            latency_max: latencies.iter().max().copied().unwrap_or(0),
             success: true,
             error: None,
         }
@@ -126,15 +137,16 @@ pub fn sort_results(results: &mut Vec<TestResult>) {
 }
 
 /// 并行测试多个 DNS 服务器，按「成功在前、延迟升序」返回
-pub async fn test_multiple(servers: &[String]) -> Result<Vec<TestResult>, String> {
+pub async fn test_multiple(servers: &[String], rounds: usize) -> Result<Vec<TestResult>, String> {
     if servers.is_empty() {
         return Err("没有要测试的 DNS 服务器".into());
     }
+    let rounds = rounds.clamp(1, MAX_ROUNDS);
 
     let mut handles = Vec::new();
     for s in servers {
         let server = s.clone();
-        handles.push(tokio::spawn(async move { test_single(&server).await }));
+        handles.push(tokio::spawn(async move { test_single(&server, rounds).await }));
     }
 
     let mut results = Vec::with_capacity(handles.len());
@@ -144,6 +156,8 @@ pub async fn test_multiple(servers: &[String]) -> Result<Vec<TestResult>, String
             Err(e) => results.push(TestResult {
                 server: "unknown".into(),
                 latency_ms: 0,
+                latency_min: 0,
+                latency_max: 0,
                 success: false,
                 error: Some(format!("任务异常: {e}")),
             }),
@@ -178,6 +192,8 @@ mod tests {
         let ok = |ms: u64| TestResult {
             server: "1.1.1.1".into(),
             latency_ms: ms,
+            latency_min: ms,
+            latency_max: ms,
             success: true,
             error: None,
         };
@@ -190,6 +206,8 @@ mod tests {
         let fail = TestResult {
             server: "1.1.1.1".into(),
             latency_ms: 0,
+            latency_min: 0,
+            latency_max: 0,
             success: false,
             error: Some("x".into()),
         };
@@ -200,6 +218,8 @@ mod tests {
         TestResult {
             server: server.into(),
             latency_ms: ms,
+            latency_min: ms,
+            latency_max: ms,
             success,
             error: None,
         }
@@ -215,6 +235,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_empty_input() {
-        assert!(test_multiple(&[]).await.is_err());
+        assert!(test_multiple(&[], DEFAULT_ROUNDS).await.is_err());
     }
 }

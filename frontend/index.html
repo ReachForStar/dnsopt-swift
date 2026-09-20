@@ -31,6 +31,15 @@
           <button id="btn-clear" class="btn btn-sm btn-danger">清空</button>
           <button id="btn-import" class="btn btn-sm btn-ghost">导入</button>
           <button id="btn-export" class="btn btn-sm btn-ghost">导出</button>
+          <label class="rounds-label">采样次数
+            <select id="rounds-select">
+              <option value="1">1</option>
+              <option value="3" selected>3</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+            </select>
+          </label>
         </div>
       </section>
 
@@ -42,7 +51,7 @@
         <div class="table-wrap">
           <table id="result-table">
             <thead>
-              <tr><th>DNS服务器</th><th>延迟 (ms)</th><th>状态</th></tr>
+              <tr><th>DNS服务器</th><th>延迟 min/avg/max (ms)</th><th>状态</th></tr>
             </thead>
             <tbody></tbody>
           </table>
@@ -60,8 +69,24 @@
         <button id="btn-apply-selected" class="btn btn-accent">应用选定DNS</button>
         <button id="btn-restore" class="btn btn-ghost">恢复自动DNS</button>
         <button id="btn-flush" class="btn btn-warn">刷新DNS缓存</button>
+        <button id="btn-cache" class="btn btn-ghost">查看缓存</button>
       </div>
     </section>
+
+    <div id="cache-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>系统 DNS 解析缓存</h3>
+          <button id="btn-cache-close" class="btn btn-sm btn-ghost">关闭</button>
+        </div>
+        <div class="modal-body">
+          <table id="cache-table">
+            <thead><tr><th>域名</th><th>IPv4 地址</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <footer class="statusbar">
       <span id="status-text">就绪</span>

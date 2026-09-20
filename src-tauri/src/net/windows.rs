@@ -31,6 +31,61 @@ struct RawAdapter {
     if_index: u32,
 }
 
+/// 系统 DNS 解析缓存条目（ipconfig /displaydns 提取）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheEntry {
+    pub name: String,
+    pub address: String,
+}
+
+/// 读取系统 DNS 解析缓存（无需管理员）
+pub fn get_dns_cache() -> Result<Vec<CacheEntry>, String> {
+    let mut cmd = std::process::Command::new("ipconfig");
+    cmd.arg("/displaydns").stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = cmd.output().map_err(|e| format!("执行 ipconfig 失败: {e}"))?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_dns_cache_output(&text))
+}
+
+/// 解析 displaydns 输出（逐行状态机，兼容中英文字段名）
+pub fn parse_dns_cache_output(out: &str) -> Vec<CacheEntry> {
+    let mut entries = Vec::new();
+    let mut current: Option<String> = None;
+    for line in out.lines() {
+        let t = line.trim();
+        if let Some(name) = displaydns_values(t, &["记录名称", "Record Name"]) {
+            current = Some(name);
+        } else if let Some(ip) = displaydns_values(t, &["IPv4 地址", "IPv4 Address"]) {
+            if let Some(name) = current.take() {
+                entries.push(CacheEntry { name, address: ip });
+            }
+        }
+    }
+    entries
+}
+
+/// 取 displaydns 行中字段后的值（如 "记录名称 . . . : xxx" → "xxx"）
+fn displaydns_values(line: &str, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(pos) = line.find(key) {
+            let rest = &line[pos + key.len()..];
+            if let Some(colon) = rest.find(':') {
+                let v = rest[colon + 1..].trim().to_string();
+                if !v.is_empty() {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
 impl Adapter {
     fn from_raw(r: RawAdapter) -> Self {
         let connected = Self::status_connected(&r.status);
@@ -226,6 +281,41 @@ mod tests {
         // 注意：Disconnected 不能误判为已连接
         assert!(!Adapter::status_connected("Disconnected"));
         assert!(!Adapter::status_connected("已断开"));
+    }
+
+    #[test]
+    fn parse_dns_cache_zh() {
+        let out = "Windows IP Configuration\n\n\
+                   记录名称 . . . . . . . : www.baidu.com\n\
+                   记录类型 . . . . . . . : 5\n\
+                   生存时间 . . . . . . . : 600\n\
+                   IPv4 地址 . . . . . . . : 110.242.68.66\n\n\
+                   记录名称 . . . . . . . : example.com\n\
+                   IPv4 地址 . . . . . . . : 93.184.216.34\n";
+        let entries = parse_dns_cache_output(out);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "www.baidu.com");
+        assert_eq!(entries[0].address, "110.242.68.66");
+        assert_eq!(entries[1].name, "example.com");
+        assert_eq!(entries[1].address, "93.184.216.34");
+    }
+
+    #[test]
+    fn parse_dns_cache_en() {
+        let out = "Record Name . . . . . . . : www.example.org\n\
+                   Record Type . . . . . . . : 5\n\
+                   IPv4 Address . . . . . . . : 192.0.2.7\n";
+        let entries = parse_dns_cache_output(out);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "www.example.org");
+        assert_eq!(entries[0].address, "192.0.2.7");
+    }
+
+    #[test]
+    fn parse_dns_cache_empty() {
+        assert!(parse_dns_cache_output("").is_empty());
+        // 无记录名称的孤立 IPv4 行不应产生条目
+        assert!(parse_dns_cache_output("IPv4 Address . . . . . . . : 1.2.3.4").is_empty());
     }
 
     #[test]

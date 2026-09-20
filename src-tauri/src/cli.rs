@@ -7,6 +7,7 @@ const USAGE: &str = r#"DNS延迟测试工具 CLI 用法:
   set <ifIndex> <主DNS> [辅DNS]   应用静态 DNS（触发 UAC 管理员确认）
   auto <ifIndex>           恢复自动获取 DNS（触发 UAC 管理员确认）
   flush                    刷新本地 DNS 缓存
+  cache                    查看系统 DNS 解析缓存
   help                     显示本帮助"#;
 
 pub fn is_cli_mode(args: &[String]) -> bool {
@@ -17,6 +18,7 @@ pub fn is_cli_mode(args: &[String]) -> bool {
             | Some("flush")
             | Some("set")
             | Some("auto")
+            | Some("cache")
             | Some("help")
             | Some("--help")
             | Some("-h")
@@ -92,7 +94,8 @@ fn run_inner(args: &[String]) -> Result<String, String> {
                 rest.to_vec()
             };
             let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-            let results = runtime.block_on(crate::dns::test_multiple(&servers))?;
+            let results =
+                runtime.block_on(crate::dns::test_multiple(&servers, crate::dns::DEFAULT_ROUNDS))?;
             let mut lines = vec!["DNS服务器\t延迟(ms)\t状态".to_string()];
             for r in &results {
                 let status = if r.success {
@@ -101,8 +104,9 @@ fn run_inner(args: &[String]) -> Result<String, String> {
                     format!("失败: {}", r.error.as_deref().unwrap_or("未知原因"))
                 };
                 lines.push(format!(
-                    "{}\t{}\t{}",
+                    "{}\t{}/{} (min/avg/max)\t{}",
                     r.server,
+                    if r.success { r.latency_min.to_string() } else { "N/A".into() },
                     if r.success { r.latency_ms.to_string() } else { "N/A".into() },
                     status
                 ));
@@ -110,6 +114,17 @@ fn run_inner(args: &[String]) -> Result<String, String> {
             Ok(lines.join("\n"))
         }
         "flush" => Ok(crate::net::flush_cache()?),
+        "cache" => {
+            let entries = crate::net::get_dns_cache()?;
+            if entries.is_empty() {
+                return Ok("DNS 解析缓存为空（可用 flush 刷新后重新解析）".into());
+            }
+            let mut lines = vec!["域名\tIPv4 地址".to_string()];
+            for e in &entries {
+                lines.push(format!("{}\t{}", e.name, e.address));
+            }
+            Ok(lines.join("\n"))
+        }
         "set" => {
             let [idx, dns1, rest2 @ ..] = rest else {
                 return Err("用法: set <ifIndex> <首选DNS> [辅助DNS]".into());

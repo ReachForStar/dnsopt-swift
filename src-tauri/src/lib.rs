@@ -15,6 +15,7 @@ pub fn run() {
             apply_dns,
             reset_dns,
             flush_cache,
+            get_dns_cache,
             import_dns,
             export_dns,
         ])
@@ -32,6 +33,7 @@ pub fn test_app() -> tauri::App<tauri::test::MockRuntime> {
             apply_dns,
             reset_dns,
             flush_cache,
+            get_dns_cache,
             import_dns,
             export_dns,
         ])
@@ -40,8 +42,10 @@ pub fn test_app() -> tauri::App<tauri::test::MockRuntime> {
 }
 
 #[tauri::command(rename = "testDns")]
-async fn test_dns(servers: Vec<String>) -> Result<Vec<dns::TestResult>, String> {
-    dns::test_multiple(&servers).await
+async fn test_dns(servers: Vec<String>, rounds: Option<u32>) -> Result<Vec<dns::TestResult>, String> {
+    // 旧前端不传 rounds 时保持默认 3 轮（向后兼容）
+    let rounds = rounds.unwrap_or(dns::DEFAULT_ROUNDS as u32).clamp(1, dns::MAX_ROUNDS as u32);
+    dns::test_multiple(&servers, rounds as usize).await
 }
 
 #[tauri::command(rename = "listAdapters")]
@@ -62,6 +66,11 @@ fn reset_dns(if_index: u32) -> Result<String, String> {
 #[tauri::command(rename = "flushCache")]
 fn flush_cache() -> Result<String, String> {
     net::flush_cache()
+}
+
+#[tauri::command(rename = "getDnsCache")]
+fn get_dns_cache() -> Result<Vec<net::CacheEntry>, String> {
+    net::get_dns_cache()
 }
 
 #[tauri::command(rename = "importDns")]

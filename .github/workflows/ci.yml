@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # 系统交互代码（Get-NetAdapter/UAC/displaydns）仅 Windows 可测
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-action@stable
+      - name: Run tests
+        working-directory: src-tauri
+        run: cargo test
