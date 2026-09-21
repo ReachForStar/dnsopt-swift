@@ -11,8 +11,8 @@ status: active
 # GitHub Actions 工作流（CI / Release）
 
 仓库两个工作流：`.github/workflows/ci.yml`（测试）与 `.github/workflows/release.yml`（打包发布）。
-远端仓库为 `ReachForStar/dnsopt-swift`（旧地址 `xyx1926885268/dnsopt-swift` 由 GitHub 重定向，
-本地 `origin` 仍写旧地址，push 时打印 "This repository moved" 提示但可用）。
+远端仓库为 `ReachForStar/dnsopt-swift`；旧地址 `xyx1926885268/dnsopt-swift` 由 GitHub 重定向（能用但每次 push 都提示
+"This repository moved"），2026-09-20 已把本地 `origin` 改为 `git@github.com:ReachForStar/dnsopt-swift.git`。
 
 ## CI（ci.yml）
 

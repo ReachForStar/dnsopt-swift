@@ -43,3 +43,4 @@
 - 发布：tag `v3.0.0`（Release run 35524785071，build 7m25s）创建 Release v3.0.0，资产 `DNS._3.0.0_x64-setup.exe`（3.4 MB）；
   安装包文件名由中文 productName 经 ASCII 过滤而来（现无重命名配置项），Release 说明与 README 按实际名描述
 - 仓库信息：description 改为 Rust/Tauri 版描述，topics 补 dns/dns-test/latency-test/tauri/rust/windows/doh/nsis
+- 仓库地址：本地 `origin` 由 `xyx1926885268/dnsopt-swift.git` 改为 `git@github.com:ReachForStar/dnsopt-swift.git`（旧地址是 GitHub 重定向，此前每次 push 都提示 moved）
