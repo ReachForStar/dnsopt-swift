@@ -44,3 +44,4 @@
   安装包文件名由中文 productName 经 ASCII 过滤而来（现无重命名配置项），Release 说明与 README 按实际名描述
 - 仓库信息：description 改为 Rust/Tauri 版描述，topics 补 dns/dns-test/latency-test/tauri/rust/windows/doh/nsis
 - 仓库地址：本地 `origin` 由 `xyx1926885268/dnsopt-swift.git` 改为 `git@github.com:ReachForStar/dnsopt-swift.git`（旧地址是 GitHub 重定向，此前每次 push 都提示 moved）
+- 换地址后 push 失败：Git LFS `locksverify` 按 remote URL 逐项配置，新地址缺该条目触发锁校验走 lfs.github.com 报 EOF；补上新地址的 `locksverify false` 后推送正常（详见 queries/git-remote-migration-lfs-locksverify.md）
